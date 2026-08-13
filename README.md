@@ -56,7 +56,7 @@ Harness（约束）  → 规定「怎么做、怎么检查」
 
 ### 设计原则
 
-EMI 系统代码量大，业务与监管规则复杂，单一 Agent 执行容易导致上下文超载。EMIHarness 采用 **主 Agent + 多子 Agent** 分工协作：
+EMI 系统代码量大，业务与监管规则复杂，单一 Agent 执行容易导致上下文超载。EMI Harness 采用 **主 Agent + 多子 Agent** 分工协作：
 
 ```mermaid
 flowchart TD
@@ -95,7 +95,7 @@ flowchart TD
 
 ## 8 模块架构
 
-EMIHarness 生成或改造的每个业务系统，统一采用与现有技术栈一致的 8 模块 Maven 工程结构。`{system}` 表示具体业务系统名称。
+EMI Harness 生成或改造的每个业务系统，统一采用与现有技术栈一致的 8 模块 Maven 工程结构。`{system}` 表示具体业务系统名称。
 
 | 模块 | 职责 |
 |------|------|
@@ -178,3 +178,101 @@ flowchart LR
 | 最终交付确认 | archive 前 | 所有要求的检查和人工审查通过后才能归档交付 |
 
 交付证据保存在对应业务项目中。复盘只记录本次执行中发现的问题，不自动生成或应用 Harness 改进；确需调整 Harness 时，作为普通变更单独提出并经过人工评审。
+
+## 框架结构
+
+第一阶段只建设一个可运行的最小闭环：支持一个 `new-module` 任务，由 Coordinator、Executor 和 Verifier 三个角色完成规划、执行、独立验证与失败回流。目录中的每个文件都必须被该闭环实际读取或生成；未进入首次运行链路的能力不提前建设。
+
+### 最小运行闭环
+
+```mermaid
+flowchart LR
+    goal["用户目标"] --> plan["Coordinator\nSDD + 验收条件 + 任务"]
+    plan --> confirm["用户确认"]
+    confirm --> execute["Executor\n实现 + 自测"]
+    execute --> verify["Verifier\n独立验收 + 质量检查"]
+    verify -->|FAIL，最多 3 轮| execute
+    verify -->|PASS| accept["用户验收"]
+    accept --> archive["归档证据"]
+```
+
+- **Coordinator** 只管理目标、SDD、任务、运行状态和角色交接，不直接实现业务代码。
+- **Executor** 只获取当前任务、相关 SDD 和必要 Guardrail，完成代码与自测。
+- **Verifier** 使用全新上下文，基于 SDD 验收条件和客观命令独立判定，不依赖 Executor 的实现思路或完成声明。
+- 验证失败时，Verifier 必须输出失败项、证据和复现方式；Coordinator 将该报告交回 Executor。
+- 连续三轮仍未达到验收条件时停止自动执行，记录当前状态并升级给用户。
+
+### 最小目录树
+
+```text
+emi-harness/
+├── README.md
+├── AGENTS.md                       # Agent 导航入口和按需加载地图
+├── install.sh                      # 记录 Harness 路径并安装 Skill
+│
+├── specs/
+│   └── pilot/
+│       └── system-design.md          # 首次试跑的 SDD 与验收条件
+│
+├── conventions/
+│   ├── tech-stack.md                 # 首次试跑使用的已确认技术栈
+│   └── module-structure.md           # 8 模块职责与依赖方向
+│
+├── harness/
+│   ├── guardrails/
+│   │   ├── core-must-rules.md        # 首个闭环必须遵守的最小规则集
+│   │   ├── architecture.md           # 8 模块架构约束
+│   │   ├── domain-modeling.md        # Money 和领域对象约束
+│   │   └── code-style.md             # 首次试跑需要的代码规范
+│   ├── feedback/
+│   │   ├── code-quality.md           # 唯一验证命令、通过标准和失败处理
+│   │   ├── maven/                    # Maven 质量插件配置
+│   │   ├── checkstyle/               # 最小 Checkstyle 规则
+│   │   └── archunit/                 # 8 模块依赖测试模板
+│   ├── tools/
+│   │   └── agent-tools.md            # 创建 SDD、生成骨架、执行验证和记录证据
+│   ├── workflow/
+│   │   └── new-module.md             # 首个闭环的单一工作流
+│   └── observability/
+│       └── execution-tracing.md       # run-id、阶段、轮次、交接和结果记录
+│
+├── templates/
+│   ├── sdd-template.md                # 最小 SDD 模板
+│   └── task-breakdown-template.md     # 任务、验收条件和进度模板
+│
+├── scaffolds/
+│   └── module-structure.md            # 可编译的 8 模块 Maven 骨架
+│
+├── skills/
+│   └── emi-harness/
+│       └── SKILL.md                   # 读取路径并启动 new-module Workflow
+│
+└── reports/
+    └── index.md                       # 首次及后续执行的全局索引
+```
+
+### 运行状态与证据
+
+Agent 的完成声明不作为运行状态。Coordinator 必须将状态、交接和原始验证证据写入目标项目，使任务可以在新上下文中继续执行。
+
+```text
+{target-project}/reports/runs/{run-id}/
+├── manifest.md                  # 目标、当前阶段、尝试轮次、交接和最终状态
+├── task-breakdown.md            # 当前任务、验收条件和完成证据
+├── executor-report.md            # Executor 变更摘要与自测结果
+├── verifier-report.md            # Verifier 逐项 PASS/FAIL 结论与复现方式
+└── quality/
+    └── verify.log                # 原始验证命令输出
+```
+
+### 首次试跑
+
+首个目标是创建一个最小 8 模块 Java 17 Maven 工程，并实现不可变 `Money` 值对象及单元测试。本次运行只有在以下条件全部满足时才能完成：
+
+- 8 个 Maven 模块可由根工程统一编译。
+- `Money` 的不可变性、同币种运算和异币种拒绝具有单元测试。
+- `mvn verify` 返回成功，Checkstyle 和 ArchUnit 检查通过。
+- `manifest.md`、Verifier 报告和原始验证日志完整，且可以相互追溯。
+- 用户完成最终验收。
+
+在这个闭环实际跑通前，不增加 `new-feature`、`refactor`、分层 Skill、监管知识目录、PRD 生成、外部接入或 Harness 自我进化机制。首次运行暴露的真实缺口，作为后续目录和能力扩展的依据。
