@@ -210,6 +210,9 @@ emi-harness/
 ├── AGENTS.md                       # Agent 导航入口和按需加载地图
 ├── install.sh                      # 记录 Harness 路径并安装 Skill
 │
+├── roadmap/
+│   └── README.md                    # 阶段目标、实施计划和当前进度
+│
 ├── specs/
 │   └── pilot/
 │       └── system-design.md          # 首次试跑的 SDD 与验收条件
