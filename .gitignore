@@ -1,0 +1,14 @@
+# Credentials and local environment
+.env
+.env.*
+!.env.example
+
+# Local agent state and reference projects
+.gstack/
+demo/
+
+# IDE and operating system files
+.idea/
+.vscode/
+*.iml
+.DS_Store
