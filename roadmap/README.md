@@ -38,7 +38,7 @@
 
 | 步骤 | 工作内容 | 交付物 | 状态 |
 | --- | --- | --- | --- |
-| 1 | 冻结首次试跑契约，明确 8 个模块、依赖方向、`Money` 行为和验收条件 | `specs/pilot/system-design.md` | 待开始 |
+| 1 | 冻结首次试跑契约，明确 8 个模块、依赖方向、`Money` 行为和验收条件 | `specs/pilot/system-design.md` | 进行中 |
 | 2 | 建设首次试跑需要的最小上下文和执行入口 | `AGENTS.md`、Conventions、Guardrails、Templates、Workflow、Skill、Feedback、Observability | 待开始 |
 | 3 | 由 Coordinator 创建运行并拆解任务，经用户确认后进入执行 | `manifest.md`、`task-breakdown.md` | 待开始 |
 | 4 | 由 Executor 在干净目标目录中生成工程、实现代码并自测 | 8 模块工程、`Money`、单元测试、`executor-report.md` | 待开始 |
