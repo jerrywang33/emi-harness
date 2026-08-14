@@ -48,7 +48,7 @@
 | D-02 | 技术基线 | 已选技术的精确版本、依赖来源和干净环境可构建条件 | 已确认 |
 | D-03 | 8 模块完成度 | 每个模块必须包含的最小内容及精确依赖关系 | 已确认 |
 | D-04 | `Money` 契约 | 所属模块、创建、规范化、运算、比较、异常和相等性语义 | 已确认 |
-| D-05 | 自动化门禁 | 插件版本、规则范围、唯一验证命令及禁止绕过方式 | 待确认 |
+| D-05 | 自动化门禁 | 插件版本、规则范围、唯一验证命令及禁止绕过方式 | 已确认 |
 | D-06 | 验收与证据 | 可执行验收场景、报告字段、日志和 `run-id` 追溯关系 | 待确认 |
 
 ## 5. 项目标识与交付位置
@@ -244,15 +244,68 @@ emi-pilot-domain/
 - 不同输入 scale 的同值金额具有一致的 `equals` 和 `hashCode`。
 - `toString()` 输出稳定格式。
 
-## 9. 待补充设计章节
+## 9. 测试与质量门禁
+
+### 9.1 门禁矩阵
+
+| 门禁 | 工具与版本 | 必须执行的内容 | 通过标准 |
+| --- | --- | --- | --- |
+| 编译 | `maven-compiler-plugin:3.11.0` | 根工程和全部 8 个模块使用 Java 17 编译 | Maven Reactor 全部 `SUCCESS` |
+| 单元测试 | JUnit 5 + Maven Surefire | `MoneyTest`、`MoneyImmutabilityTest` | 测试被实际发现且全部通过 |
+| 模块结构 | JUnit 5 + Maven Surefire | `ModuleStructureTest` | 模块、Parent 和内部依赖矩阵符合第 7 节 |
+| 架构边界 | `archunit-junit5:1.2.1` | `LayerDependencyArchTest` | 所有已存在 Java 代码遵守分层依赖方向 |
+| 代码规范 | `maven-checkstyle-plugin:3.3.1` + Checkstyle `10.14.2` | 检查全部主源码 | 零违规 |
+
+JUnit 5 和 Maven Surefire 的最终版本由固定的 DongBoot Parent POM 管理，并通过有效 POM 记录。`MoneyTest` 与 `MoneyImmutabilityTest` 所在的 domain 模块，以及两个跨模块测试所在的 test 模块，必须配置为没有发现测试时构建失败。
+
+Checkstyle 首次沿用 demo 已实际使用的规则，配置的 canonical source 为 `harness/feedback/checkstyle/checkstyle.xml`。首轮只检查主源码；测试源码规范在最小闭环跑通后再评估，不得在本轮临时扩大范围。
+
+### 9.2 唯一验证命令
+
+正式验证只接受以下 Maven 命令：
+
+```bash
+mvn --batch-mode --errors --no-transfer-progress clean verify
+```
+
+Maven settings 和 run 专属本地仓库由运行环境按第 6.3、6.4 节注入，不得通过修改目标项目的技术基线形成另一套验证命令。记录日志时必须保留 Maven 的真实退出码，不能因管道或日志工具覆盖失败状态。
+
+### 9.3 PASS 判定
+
+Verifier 只有在以下条件全部满足时才能判定 `PASS`：
+
+- 唯一验证命令退出码为 `0`。
+- Maven Reactor 中根工程和 8 个子模块全部为 `SUCCESS`。
+- `MoneyTest`、`MoneyImmutabilityTest`、`ModuleStructureTest` 和 `LayerDependencyArchTest` 均被实际发现并执行，且没有失败或错误。
+- Checkstyle 被实际执行并报告零违规。
+- 完整原始命令输出已写入 `reports/runs/{run-id}/quality/verify.log`。
+
+命令退出码为 `0` 但缺少任一指定测试、Checkstyle 执行记录或完整日志时，仍判定为 `FAIL`。
+
+### 9.4 禁止绕过
+
+正式验证不得采用以下方式：
+
+- 使用 `-DskipTests`、`-Dmaven.test.skip=true`、`-Dcheckstyle.skip=true` 或同类跳过参数。
+- 只验证单个模块、单个测试类或部分 Reactor 后宣称整体通过。
+- 删除失败测试、降低规则、增加排除项或修改验收条件后直接重跑。
+- 使用历史日志、Executor 自测结论或手工描述代替 Verifier 独立执行。
+- 使用 `|| true`、忽略退出码或其他方式把失败命令包装为成功。
+
+如果测试或规则本身需要修改，Coordinator 必须先停止当前验证回流并取得用户确认；此类变更属于规格调整，不属于 Executor 的普通修复权限。
+
+### 9.5 首轮延期门禁
+
+PMD、P3C、SpotBugs、JaCoCo 和 SonarQube 不进入首次闭环。首轮运行完成后，根据实际缺口逐项评估，不得因为 demo 已存在配置就一次性引入。
+
+## 10. 待补充设计章节
 
 以下章节在对应决策确认后补充，未确认内容不得由 Agent 自行推断：
 
-1. 测试与质量门禁。
-2. 运行状态与交付证据。
-3. 验收场景与完成判定。
+1. 运行状态与交付证据。
+2. 验收场景与完成判定。
 
-## 10. 批准记录
+## 11. 批准记录
 
 | 版本 | 日期 | 状态 | 说明 |
 | --- | --- | --- | --- |
@@ -261,3 +314,4 @@ emi-pilot-domain/
 | v0.1-draft.3 | 2026-08-13 | Draft | 确认 D-02：冻结技术版本、最小依赖策略和干净环境预检门禁 |
 | v0.1-draft.4 | 2026-08-14 | Draft | 确认 D-03：冻结 8 模块拓扑、精确依赖矩阵和最小内容原则 |
 | v0.1-draft.5 | 2026-08-14 | Draft | 确认 D-04：冻结 `Money` 的归属、公开 API、精度、运算、异常和相等性契约 |
+| v0.1-draft.6 | 2026-08-14 | Draft | 确认 D-05：冻结自动化门禁、唯一验证命令、PASS 标准和禁止绕过规则 |
