@@ -248,7 +248,9 @@ emi-harness/
 │
 ├── skills/
 │   └── emi-harness/
-│       └── SKILL.md                   # 读取路径并启动 new-module Workflow
+│       ├── SKILL.md                   # 读取路径并启动 new-module Workflow
+│       └── agents/
+│           └── openai.yaml            # Codex Skill 展示与默认触发信息
 │
 └── reports/
     └── index.md                       # 首次及后续执行的全局索引
