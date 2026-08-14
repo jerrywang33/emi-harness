@@ -59,10 +59,11 @@
 | 目标目录名 | `emi-pilot` |
 | Maven 聚合 artifactId | `emi-pilot` |
 | Maven groupId | `com.jd.emiharness` |
+| Maven version | `1.0.0-SNAPSHOT` |
 | Java 根包 | `com.jd.emiharness.pilot` |
 | 默认本地位置 | EMI Harness 同级目录 `../emi-pilot` |
 | Git 边界 | 独立 Git 仓库 |
-| Git 远端 | 首次运行前由用户另行决定 |
+| Git 远端 | 本次不创建 |
 
 8 个子模块统一使用 `emi-pilot` 前缀：
 
@@ -90,45 +91,69 @@
 | --- | --- |
 | JDK | Java 17 |
 | Maven | 3.9 或更高版本 |
-| Parent POM | `com.jd.framework:dong-boot-dependencies:2.0.9` |
-| 应用框架 | DongBoot 2.0.9 |
+| Parent POM | `org.springframework.boot:spring-boot-starter-parent:4.1.0` |
+| 应用框架 | Spring Boot 4.1.0 |
 | 源码与构建编码 | UTF-8 |
-| 单元测试 | JUnit 5，具体版本由固定的 Parent POM 管理 |
-| 架构测试 | `com.tngtech.archunit:archunit-junit5:1.2.1` |
+| 单元测试 | JUnit Jupiter，具体版本由固定的 Spring Boot Parent POM 管理 |
+| 架构测试 | `com.tngtech.archunit:archunit-junit5:1.4.2` |
 
-DongBoot 必须进入首次试跑的真实构建链路。否则本次运行只能证明通用 Maven 工程可用，不能证明 EMI Harness 能够适配团队的实际技术栈。
+Spring Boot 4.1.0 是首次试跑的公开技术基线。它必须进入真实构建和打包链路，使公开的 EMI Harness 可以在不依赖京东内部制品的环境中复现。
 
 ### 6.2 依赖范围
 
-- 首次试跑只引入 8 模块骨架、DongBoot 启动、`Money` 实现、单元测试和架构测试实际需要的依赖。
+- 首次试跑只引入 8 模块骨架、Spring Boot 启动、`Money` 实现、单元测试和架构测试实际需要的依赖。
 - MyBatis、MySQL、JMQ、Redis、JSF、MapStruct 及其他未被本次功能使用的组件不进入 POM。
-- “沿用现有技术栈”表示后续真实需求继续使用已确认的团队技术体系，不表示最小工程必须预装全部组件。
+- “采用已确认技术栈”不表示最小工程必须预装全部组件；依赖必须由本次实际代码或门禁需要驱动。
 - 所有显式版本必须在根 POM 集中管理；由 Parent POM 管理的最终版本通过 `help:effective-pom` 留证。
 
 ### 6.3 Maven 依赖来源
 
-- DongBoot Parent 和内部依赖通过执行环境提供的 Maven `settings.xml` 解析。
-- Maven 凭据、访问令牌和包含凭据的仓库地址不得写入 `emi-harness` 或 `emi-pilot`。
-- `settings.xml` 的实际位置由 Coordinator 写入运行状态，但报告不得复制其中的敏感内容。
+- Spring Boot Parent 和本次全部外部依赖从 Maven Central 解析，不依赖京东内部制品库。
+- 首次试跑不要求自定义 Maven `settings.xml`。执行环境如因代理或镜像需要 settings，只能在仓库外配置。
+- Maven 凭据、访问令牌和包含凭据的仓库地址不得写入 `emi-harness`、`emi-pilot` 或运行报告。
+- Coordinator 将当前 `run-id` 写入 `RUN_ID`，该值必须与证据目录名称一致。
+- Coordinator 为本次 run 创建一个初始为空的独立 Maven 本地仓库，并通过 `RUN_MAVEN_REPOSITORY` 记录其绝对路径。
 
 ### 6.4 执行前环境门禁
 
-Coordinator 在创建实现任务前必须完成环境预检，并将命令、退出码和原始输出写入 `reports/runs/{run-id}/quality/environment-preflight.log`：
+Coordinator 在创建实现任务前必须完成第一阶段环境预检，并将命令、退出码和原始输出写入 `reports/runs/{run-id}/quality/environment-preflight.log`：
 
 1. `java -version` 显示 Java 17。
 2. `mvn -version` 显示 Maven 3.9 或更高版本，并使用 Java 17。
-3. 使用外部 Maven settings 从一个新的空本地仓库解析 `com.jd.framework:dong-boot-dependencies:2.0.9`。
-4. 生成并保存有效 POM，确认 Parent POM、JUnit 和其他受管依赖的最终版本。
+3. `RUN_MAVEN_REPOSITORY` 指向本次 run 新建的空目录。
+4. 使用该本地仓库从 Maven Central 解析 `org.springframework.boot:spring-boot-starter-parent:4.1.0`。
 
-首次运行必须使用 run 专属的空 Maven 本地仓库完成依赖解析和构建，不能因命中开发机已有缓存而判定环境可用。任一预检失败时，运行状态记为 `BLOCKED`，不得派发 Executor，也不得通过跳过插件、切换 Parent 或删除依赖来绕过。
+Coordinator 将最小 Parent POM 写入 `quality/preflight-pom.xml`，并使用以下命令完成第 4 项：
 
-设计阶段检查时，当前机器尚未发现 Java、Maven、Maven settings 或 DongBoot 2.0.9 本地缓存。该事实不改变技术基线，但必须在首次运行前解决。
+```bash
+mvn -f "reports/runs/$RUN_ID/quality/preflight-pom.xml" \
+  -Dmaven.repo.local="$RUN_MAVEN_REPOSITORY" \
+  --batch-mode --errors --no-transfer-progress \
+  validate
+```
+
+Executor 生成根 POM 和模块 POM 后，Verifier 使用以下命令执行第二阶段环境检查：
+
+```bash
+mvn -Dmaven.repo.local="$RUN_MAVEN_REPOSITORY" \
+  --batch-mode --errors --no-transfer-progress \
+  help:effective-pom \
+  -Doutput="reports/runs/$RUN_ID/quality/effective-pom.xml"
+```
+
+Verifier 必须确认 Spring Boot Parent、JUnit Jupiter、Maven Surefire 和其他受管依赖的最终版本，再执行正式质量门禁。以上两条是环境证据命令，不替代第 9.2 节唯一正式验证命令。
+
+首次运行必须持续使用同一个 run 专属 Maven 本地仓库，不能因命中开发机原有缓存而判定环境可用。任一第一阶段预检失败时，运行状态记为 `BLOCKED`，不得派发 Executor；第二阶段检查失败时判定当前 attempt 为 `FAIL`。任何角色都不得通过跳过插件、切换 Parent 或删除依赖来绕过。
+
+设计阶段检查时，当前机器尚未发现 Java 或 Maven。该事实不改变技术基线，但必须在首次运行前解决。
 
 ## 7. 模块结构与依赖矩阵
 
 ### 7.1 Maven 模块拓扑
 
 根工程使用 `pom` packaging，并且必须声明以下 8 个且仅此 8 个子模块。所有子模块统一继承根 POM，内部依赖版本在根 POM 集中管理。
+
+根 POM 继承 `org.springframework.boot:spring-boot-starter-parent:4.1.0` 并设置空的 `<relativePath/>`；8 个子模块统一继承 `com.jd.emiharness:emi-pilot:1.0.0-SNAPSHOT` 并设置 `<relativePath>../pom.xml</relativePath>`。不能因本机目录中存在其他 POM 而改变 Parent 解析结果。
 
 | 模块 | Packaging | 必须声明的内部依赖 | 首次试跑的最小内容 |
 | --- | --- | --- | --- |
@@ -138,7 +163,7 @@ Coordinator 在创建实现任务前必须完成环境预检，并将命令、�
 | `emi-pilot-app` | `jar` | `client`、`domain`、`common` | 模块 POM；本次没有应用用例，不生成 AppService 或 Gateway |
 | `emi-pilot-infra` | `jar` | `app`、`domain`、`client`、`common` | 模块 POM；本次没有持久化或外部接入，不生成实现类 |
 | `emi-pilot-adapter` | `jar` | `app`、`common` | 模块 POM；本次没有 REST、MQ 或 Scheduler，不生成入口代码 |
-| `emi-pilot-start` | `jar` | `adapter`、`app`、`infra`、`client`、`domain`、`common` | 模块 POM 和最小 DongBoot 启动类 |
+| `emi-pilot-start` | `jar` | `adapter`、`app`、`infra`、`client`、`domain`、`common` | 模块 POM、Spring Boot 启动类和可执行 JAR 配置 |
 | `emi-pilot-test` | `jar` | 其余 7 个模块，均为 test scope | 模块 POM、模块结构测试和 ArchUnit 分层测试 |
 
 表格中的依赖集合是首次试跑的精确值，每个模块必须完整声明且不得增加其他内部依赖。构建顺序由 Maven Reactor 根据依赖图确定，不能通过手工脚本掩盖错误依赖。
@@ -148,13 +173,22 @@ Coordinator 在创建实现任务前必须完成环境预检，并将命令、�
 - 8 个模块必须全部存在并参与根工程构建，即使某个模块本次没有 Java 源码。
 - 不为填充目录而生成占位 Facade、DTO、AppService、Gateway、Repository、PO、Controller、Consumer 或 Scheduler。
 - 没有实际源码的模块只保留 POM，不创建无用途的标记类或 `.gitkeep`。
-- `emi-pilot-start` 必须包含可编译的 DongBoot 启动类，确保 DongBoot 进入真实编译链路。
+- `emi-pilot-start` 必须包含可编译的 Spring Boot 启动类，并在 `verify` 生命周期中生成可执行 JAR。
 - `Money` 及其单元测试放在 `emi-pilot-domain`，具体行为遵循 D-04 契约。
 - 模块内单元测试与被测代码同模块；跨模块结构和架构测试统一放入 `emi-pilot-test`。
 
 本次保留空的 `adapter` 模块，是为了验证已经约定的 8 模块拓扑。后续真实项目仍按能力清单决定是否需要该模块，不能据此推导所有 EMI 系统都必须包含 adapter。
 
-### 7.3 结构验证
+### 7.3 Spring Boot 启动契约
+
+- `emi-pilot-start` 声明 `org.springframework.boot:spring-boot-starter` 依赖，版本由 Parent POM 管理。
+- 启动类固定为 `com.jd.emiharness.pilot.start.EmiPilotApplication`。
+- 启动类使用 `@SpringBootApplication(scanBasePackages = "com.jd.emiharness.pilot")`。
+- `main(String[] args)` 只调用 `SpringApplication.run(EmiPilotApplication.class, args)`。
+- start 模块声明 `org.springframework.boot:spring-boot-maven-plugin`，使用 Parent POM 已配置的 `repackage` execution 生成可执行 JAR。
+- 本次不添加 `MapperScan`、数据库配置、Web Server、`CountDownLatch` 或其他无实际需求的启动逻辑。
+
+### 7.4 结构验证
 
 `emi-pilot-test` 至少包含以下两类客观测试：
 
@@ -251,12 +285,12 @@ emi-pilot-domain/
 | 门禁 | 工具与版本 | 必须执行的内容 | 通过标准 |
 | --- | --- | --- | --- |
 | 编译 | `maven-compiler-plugin:3.11.0` | 根工程和全部 8 个模块使用 Java 17 编译 | Maven Reactor 全部 `SUCCESS` |
-| 单元测试 | JUnit 5 + Maven Surefire | `MoneyTest`、`MoneyImmutabilityTest` | 测试被实际发现且全部通过 |
-| 模块结构 | JUnit 5 + Maven Surefire | `ModuleStructureTest` | 模块、Parent 和内部依赖矩阵符合第 7 节 |
-| 架构边界 | `archunit-junit5:1.2.1` | `LayerDependencyArchTest` | 所有已存在 Java 代码遵守分层依赖方向 |
+| 单元测试 | JUnit Jupiter + Maven Surefire | `MoneyTest`、`MoneyImmutabilityTest` | 测试被实际发现且全部通过 |
+| 模块结构 | JUnit Jupiter + Maven Surefire | `ModuleStructureTest` | 模块、Parent 和内部依赖矩阵符合第 7 节 |
+| 架构边界 | `archunit-junit5:1.4.2` | `LayerDependencyArchTest` | 所有已存在 Java 代码遵守分层依赖方向 |
 | 代码规范 | `maven-checkstyle-plugin:3.3.1` + Checkstyle `10.14.2` | 检查全部主源码 | 零违规 |
 
-JUnit 5 和 Maven Surefire 的最终版本由固定的 DongBoot Parent POM 管理，并通过有效 POM 记录。`MoneyTest` 与 `MoneyImmutabilityTest` 所在的 domain 模块，以及两个跨模块测试所在的 test 模块，必须配置为没有发现测试时构建失败。
+JUnit Jupiter 和 Maven Surefire 的最终版本由固定的 Spring Boot Parent POM 管理，并通过有效 POM 记录。`MoneyTest` 与 `MoneyImmutabilityTest` 所在的 domain 模块，以及两个跨模块测试所在的 test 模块，必须配置为没有发现测试时构建失败。
 
 Checkstyle 首次沿用 demo 已实际使用的规则，配置的 canonical source 为 `harness/feedback/checkstyle/checkstyle.xml`。首轮只检查主源码；测试源码规范在最小闭环跑通后再评估，不得在本轮临时扩大范围。
 
@@ -265,10 +299,12 @@ Checkstyle 首次沿用 demo 已实际使用的规则，配置的 canonical sour
 正式验证只接受以下 Maven 命令：
 
 ```bash
-mvn --batch-mode --errors --no-transfer-progress clean verify
+mvn -Dmaven.repo.local="$RUN_MAVEN_REPOSITORY" \
+  --batch-mode --errors --no-transfer-progress \
+  clean verify
 ```
 
-Maven settings 和 run 专属本地仓库由运行环境按第 6.3、6.4 节注入，不得通过修改目标项目的技术基线形成另一套验证命令。记录日志时必须保留 Maven 的真实退出码，不能因管道或日志工具覆盖失败状态。
+`RUN_MAVEN_REPOSITORY` 必须与第 6.3、6.4 节预检使用的绝对路径一致。记录日志时必须保留 Maven 的真实退出码，不能因管道或日志工具覆盖失败状态。
 
 ### 9.3 PASS 判定
 
@@ -325,6 +361,7 @@ reports/runs/{run-id}/
 ├── retrospective.md
 ├── quality/
 │   ├── environment-preflight.log
+│   ├── preflight-pom.xml
 │   ├── effective-pom.xml
 │   └── feedback-loop-drill.log       # 仅在没有自然 FAIL 时生成
 └── attempts/
@@ -428,3 +465,4 @@ D-01 至 D-06 均已逐项确认。本文档仍保持 `Draft`，在用户完成�
 | v0.1-draft.5 | 2026-08-14 | Draft | 确认 D-04：冻结 `Money` 的归属、公开 API、精度、运算、异常和相等性契约 |
 | v0.1-draft.6 | 2026-08-14 | Draft | 确认 D-05：冻结自动化门禁、唯一验证命令、PASS 标准和禁止绕过规则 |
 | v0.1-draft.7 | 2026-08-14 | Draft | 确认 D-06：冻结运行状态、逐轮证据、验收场景和最终完成判定 |
+| v0.1-draft.8 | 2026-08-14 | Draft | 改用公开 Spring Boot 4.1.0 基线，补齐项目版本、启动契约、两阶段环境检查和本地 Git 边界 |

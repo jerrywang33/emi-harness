@@ -95,7 +95,7 @@ flowchart TD
 
 ## 8 模块架构
 
-EMI Harness 生成或改造的每个业务系统，统一采用与现有技术栈一致的 8 模块 Maven 工程结构。`{system}` 表示具体业务系统名称。
+EMI Harness 生成或改造的每个业务系统，统一采用 8 模块 Maven 工程结构。`{system}` 表示具体业务系统名称；v0.1 首次试跑使用 Java 17 和 Spring Boot 4.1.0。
 
 | 模块 | 职责 |
 |------|------|
@@ -104,7 +104,7 @@ EMI Harness 生成或改造的每个业务系统，统一采用与现有技术�
 | **`{system}-app`** | 应用编排：Facade 实现、AppService、事务、幂等、Command/Result、转换器以及业务语义 Gateway 接口。 |
 | **`{system}-domain`** | 领域模型与领域规则：聚合根、状态机、DomainService、Repository 接口以及领域数据载体。具体承载账户、支付、账务、资金保护等当前系统的业务规则。 |
 | **`{system}-infra`** | 基础设施实现：Repository/Gateway 实现、Mapper、PO、数据库、MQ、Redis、ID 生成，以及银行、支付渠道、KYC、AML 和制裁筛查等外部系统接入。 |
-| **`{system}-start`** | DongBoot 启动入口和应用装配。 |
+| **`{system}-start`** | Spring Boot 启动入口和应用装配。 |
 | **`{system}-common`** | 极少量通用基础能力；业务 DTO、Repository、Gateway、枚举和常量不得放入该模块。 |
 | **`{system}-test`** | 跨模块集成测试、ArchUnit 架构约束测试，以及 EMI 关键业务与合规场景测试；模块内单元测试仍放在各自模块。 |
 
@@ -266,6 +266,7 @@ Agent 的完成声明不作为运行状态。Coordinator 必须将状态、交�
 ├── retrospective.md                  # 首次运行暴露的真实缺口
 ├── quality/
 │   ├── environment-preflight.log     # Java、Maven 和依赖解析预检
+│   ├── preflight-pom.xml             # 验证 Spring Boot Parent 可公开解析
 │   └── effective-pom.xml             # 首次运行实际生效的 Maven 版本
 └── attempts/
     └── 01/
