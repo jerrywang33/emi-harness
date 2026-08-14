@@ -46,7 +46,7 @@
 | --- | --- | --- | --- |
 | D-01 | 试跑项目身份 | 系统名、目录名、Maven 坐标、Java 根包、产物保存位置 | 已确认 |
 | D-02 | 技术基线 | 已选技术的精确版本、依赖来源和干净环境可构建条件 | 已确认 |
-| D-03 | 8 模块完成度 | 每个模块必须包含的最小内容及精确依赖关系 | 待确认 |
+| D-03 | 8 模块完成度 | 每个模块必须包含的最小内容及精确依赖关系 | 已确认 |
 | D-04 | `Money` 契约 | 所属模块、创建、规范化、运算、比较、异常和相等性语义 | 待确认 |
 | D-05 | 自动化门禁 | 插件版本、规则范围、唯一验证命令及禁止绕过方式 | 待确认 |
 | D-06 | 验收与证据 | 可执行验收场景、报告字段、日志和 `run-id` 追溯关系 | 待确认 |
@@ -124,20 +124,59 @@ Coordinator 在创建实现任务前必须完成环境预检，并将命令、�
 
 设计阶段检查时，当前机器尚未发现 Java、Maven、Maven settings 或 DongBoot 2.0.9 本地缓存。该事实不改变技术基线，但必须在首次运行前解决。
 
-## 7. 待补充设计章节
+## 7. 模块结构与依赖矩阵
+
+### 7.1 Maven 模块拓扑
+
+根工程使用 `pom` packaging，并且必须声明以下 8 个且仅此 8 个子模块。所有子模块统一继承根 POM，内部依赖版本在根 POM 集中管理。
+
+| 模块 | Packaging | 必须声明的内部依赖 | 首次试跑的最小内容 |
+| --- | --- | --- | --- |
+| `emi-pilot-common` | `jar` | 无 | 模块 POM；是否承载 `Money` 由 D-04 决定 |
+| `emi-pilot-client` | `jar` | `common` | 模块 POM；本次没有外部契约，不生成 Facade 或 DTO |
+| `emi-pilot-domain` | `jar` | `common` | 模块 POM；是否承载 `Money` 由 D-04 决定 |
+| `emi-pilot-app` | `jar` | `client`、`domain`、`common` | 模块 POM；本次没有应用用例，不生成 AppService 或 Gateway |
+| `emi-pilot-infra` | `jar` | `app`、`domain`、`client`、`common` | 模块 POM；本次没有持久化或外部接入，不生成实现类 |
+| `emi-pilot-adapter` | `jar` | `app`、`common` | 模块 POM；本次没有 REST、MQ 或 Scheduler，不生成入口代码 |
+| `emi-pilot-start` | `jar` | `adapter`、`app`、`infra`、`client`、`domain`、`common` | 模块 POM 和最小 DongBoot 启动类 |
+| `emi-pilot-test` | `jar` | 其余 7 个模块，均为 test scope | 模块 POM、模块结构测试和 ArchUnit 分层测试 |
+
+表格中的依赖集合是首次试跑的精确值，每个模块必须完整声明且不得增加其他内部依赖。构建顺序由 Maven Reactor 根据依赖图确定，不能通过手工脚本掩盖错误依赖。
+
+### 7.2 最小内容原则
+
+- 8 个模块必须全部存在并参与根工程构建，即使某个模块本次没有 Java 源码。
+- 不为填充目录而生成占位 Facade、DTO、AppService、Gateway、Repository、PO、Controller、Consumer 或 Scheduler。
+- 没有实际源码的模块只保留 POM，不创建无用途的标记类或 `.gitkeep`。
+- `emi-pilot-start` 必须包含可编译的 DongBoot 启动类，确保 DongBoot 进入真实编译链路。
+- `Money` 及其模块内单元测试放置位置和行为由 D-04 冻结。
+- 模块内单元测试与被测代码同模块；跨模块结构和架构测试统一放入 `emi-pilot-test`。
+
+本次保留空的 `adapter` 模块，是为了验证已经约定的 8 模块拓扑。后续真实项目仍按能力清单决定是否需要该模块，不能据此推导所有 EMI 系统都必须包含 adapter。
+
+### 7.3 结构验证
+
+`emi-pilot-test` 至少包含以下两类客观测试：
+
+- `ModuleStructureTest`：验证根 POM 声明的模块集合、子模块 POM、Parent 坐标和内部依赖集合与本节一致。
+- `LayerDependencyArchTest`：验证当前已有 Java 代码遵守 `common`、`client`、`domain`、`app`、`infra`、`adapter` 和 `start` 的允许依赖方向。
+
+ArchUnit 只能验证实际存在的字节码，不能证明空模块的 POM 依赖正确，因此不得用 `LayerDependencyArchTest` 代替 `ModuleStructureTest`。
+
+## 8. 待补充设计章节
 
 以下章节在对应决策确认后补充，未确认内容不得由 Agent 自行推断：
 
-1. 模块结构与依赖矩阵。
-2. `Money` 领域契约。
-3. 测试与质量门禁。
-4. 运行状态与交付证据。
-5. 验收场景与完成判定。
+1. `Money` 领域契约。
+2. 测试与质量门禁。
+3. 运行状态与交付证据。
+4. 验收场景与完成判定。
 
-## 8. 批准记录
+## 9. 批准记录
 
 | 版本 | 日期 | 状态 | 说明 |
 | --- | --- | --- | --- |
 | v0.1-draft.1 | 2026-08-13 | Draft | 建立首次试跑契约骨架，等待逐项确认 D-01 至 D-06 |
 | v0.1-draft.2 | 2026-08-13 | Draft | 确认 D-01：冻结 `emi-pilot` 项目标识、交付位置和仓库边界 |
 | v0.1-draft.3 | 2026-08-13 | Draft | 确认 D-02：冻结技术版本、最小依赖策略和干净环境预检门禁 |
+| v0.1-draft.4 | 2026-08-14 | Draft | 确认 D-03：冻结 8 模块拓扑、精确依赖矩阵和最小内容原则 |
