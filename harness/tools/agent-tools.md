@@ -30,6 +30,8 @@
 
 口头说明不能先于落盘状态成为新的事实来源。
 
+manifest 的 `current-commit` 写入步骤 1 开始前最近一个已完成的目标交接 commit，不尝试预写包含 manifest 自身的 SHA。步骤 4 产生的 manifest commit 在恢复时通过 Git 动态解析。
+
 ## T-04：角色派发
 
 ### Executor 输入

@@ -48,7 +48,7 @@ PLANNING
 - branch: main
 - remote: none
 - starting-commit:
-- current-commit:
+- current-commit:  # 本次 manifest 更新前最近一个已完成的目标交接 commit
 - run-maven-repository:
 
 ## State
@@ -75,6 +75,8 @@ PLANNING
 ```
 
 所有时间使用带 `+08:00` 的 ISO 8601。未知值写 `pending`，不能凭空填写。
+
+`current-commit` 不自引用包含当前 manifest 的 commit；它记录本次 manifest 更新前已经存在、可被下一角色检出的最近目标交接 commit。恢复时，manifest 自身所在 commit 使用 `git log -1 --format=%H -- reports/runs/{run-id}/manifest.md` 动态解析，并同时核对实际 `HEAD`。这样既保留稳定 SHA，也避免无法构造的 commit 自引用。
 
 ## 3. Attempt 不可变性
 
