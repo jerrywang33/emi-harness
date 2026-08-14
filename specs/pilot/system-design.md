@@ -47,7 +47,7 @@
 | D-01 | 试跑项目身份 | 系统名、目录名、Maven 坐标、Java 根包、产物保存位置 | 已确认 |
 | D-02 | 技术基线 | 已选技术的精确版本、依赖来源和干净环境可构建条件 | 已确认 |
 | D-03 | 8 模块完成度 | 每个模块必须包含的最小内容及精确依赖关系 | 已确认 |
-| D-04 | `Money` 契约 | 所属模块、创建、规范化、运算、比较、异常和相等性语义 | 待确认 |
+| D-04 | `Money` 契约 | 所属模块、创建、规范化、运算、比较、异常和相等性语义 | 已确认 |
 | D-05 | 自动化门禁 | 插件版本、规则范围、唯一验证命令及禁止绕过方式 | 待确认 |
 | D-06 | 验收与证据 | 可执行验收场景、报告字段、日志和 `run-id` 追溯关系 | 待确认 |
 
@@ -132,9 +132,9 @@ Coordinator 在创建实现任务前必须完成环境预检，并将命令、�
 
 | 模块 | Packaging | 必须声明的内部依赖 | 首次试跑的最小内容 |
 | --- | --- | --- | --- |
-| `emi-pilot-common` | `jar` | 无 | 模块 POM；是否承载 `Money` 由 D-04 决定 |
+| `emi-pilot-common` | `jar` | 无 | 模块 POM；本次不生成 Java 源码 |
 | `emi-pilot-client` | `jar` | `common` | 模块 POM；本次没有外部契约，不生成 Facade 或 DTO |
-| `emi-pilot-domain` | `jar` | `common` | 模块 POM；是否承载 `Money` 由 D-04 决定 |
+| `emi-pilot-domain` | `jar` | `common` | 模块 POM、`Money` 值对象及其单元测试 |
 | `emi-pilot-app` | `jar` | `client`、`domain`、`common` | 模块 POM；本次没有应用用例，不生成 AppService 或 Gateway |
 | `emi-pilot-infra` | `jar` | `app`、`domain`、`client`、`common` | 模块 POM；本次没有持久化或外部接入，不生成实现类 |
 | `emi-pilot-adapter` | `jar` | `app`、`common` | 模块 POM；本次没有 REST、MQ 或 Scheduler，不生成入口代码 |
@@ -149,7 +149,7 @@ Coordinator 在创建实现任务前必须完成环境预检，并将命令、�
 - 不为填充目录而生成占位 Facade、DTO、AppService、Gateway、Repository、PO、Controller、Consumer 或 Scheduler。
 - 没有实际源码的模块只保留 POM，不创建无用途的标记类或 `.gitkeep`。
 - `emi-pilot-start` 必须包含可编译的 DongBoot 启动类，确保 DongBoot 进入真实编译链路。
-- `Money` 及其模块内单元测试放置位置和行为由 D-04 冻结。
+- `Money` 及其单元测试放在 `emi-pilot-domain`，具体行为遵循 D-04 契约。
 - 模块内单元测试与被测代码同模块；跨模块结构和架构测试统一放入 `emi-pilot-test`。
 
 本次保留空的 `adapter` 模块，是为了验证已经约定的 8 模块拓扑。后续真实项目仍按能力清单决定是否需要该模块，不能据此推导所有 EMI 系统都必须包含 adapter。
@@ -163,16 +163,96 @@ Coordinator 在创建实现任务前必须完成环境预检，并将命令、�
 
 ArchUnit 只能验证实际存在的字节码，不能证明空模块的 POM 依赖正确，因此不得用 `LayerDependencyArchTest` 代替 `ModuleStructureTest`。
 
-## 8. 待补充设计章节
+## 8. `Money` 领域契约
+
+### 8.1 归属与类型
+
+`Money` 位于：
+
+```text
+emi-pilot-domain/
+└── src/main/java/com/jd/emiharness/pilot/domain/money/Money.java
+```
+
+- `Money` 是 `final` 类，实现 `Comparable<Money>`。
+- 内部只保存 `private final BigDecimal value` 和 `private final Currency currency`。
+- 构造器不公开，只能通过工厂方法创建。
+- 不提供 setter；`BigDecimal` 和 `Currency` 均按不可变对象使用。
+- 本次不实现 Jackson 序列化，也不实现 Java `Serializable`。
+- 本次不提取 Shared Kernel；出现跨系统复用证据后再单独决策。
+
+### 8.2 公开 API
+
+| 分类 | 方法 | 语义 |
+| --- | --- | --- |
+| 创建 | `of(BigDecimal value, String currency)` | 按 ISO 4217 币种精度创建金额 |
+| 创建 | `ofMinorUnits(long minorUnits, String currency)` | 从币种最小单位创建金额 |
+| 创建 | `zero(String currency)` | 创建指定币种的零值 |
+| 访问 | `getValue()` | 返回规范化后的 `BigDecimal` 金额 |
+| 访问 | `getCurrency()` | 返回大写 ISO 4217 币种代码 |
+| 访问 | `getScale()` | 返回币种的小数位数 |
+| 访问 | `getMinorUnits()` | 返回最小单位整数，超出 `long` 范围时抛出 `ArithmeticException` |
+| 判断 | `isZero()`、`isPositive()`、`isNegative()` | 判断金额符号 |
+| 运算 | `add(Money other)`、`subtract(Money other)` | 同币种加减 |
+| 运算 | `multiply(BigDecimal factor, RoundingMode mode)` | 使用显式舍入模式乘以因子 |
+| 运算 | `divide(BigDecimal divisor, RoundingMode mode)` | 使用显式舍入模式除以因子 |
+| 运算 | `abs()`、`negate()` | 绝对值和取反 |
+| 比较 | `compareTo(Money other)` | 同币种数值比较 |
+| 比较 | `isGreaterThan`、`isLessThan`、`isGreaterThanOrEqualTo`、`isLessThanOrEqualTo` | 同币种比较的语义化方法 |
+| 对象 | `equals()`、`hashCode()` | 以规范化金额和币种判定值相等 |
+| 对象 | `toString()` | 固定输出 `{currency} {value}`，例如 `EUR 10.00` |
+
+不提供接收 `double` 的工厂方法，也不提供省略 `RoundingMode` 的乘除重载。
+
+### 8.3 创建与规范化
+
+- `value`、`currency`、运算参数和 `RoundingMode` 均不得为 `null`；传入 `null` 时抛出 `NullPointerException`。
+- 币种代码必须是未经空白包裹的大写 ISO 4217 三字母代码，不做 `trim` 或大小写自动修正。
+- 使用 `Currency.getInstance(currency)` 校验币种；未知代码抛出 `IllegalArgumentException`。
+- `Currency.getDefaultFractionDigits()` 小于 0 的特殊代码不属于本次支持的法币，抛出 `IllegalArgumentException`。
+- 使用币种默认小数位规范化金额。允许删除不改变数值的尾随零，但需要舍入才能达到币种精度时抛出 `ArithmeticException`。
+- `EUR 1`、`EUR 1.0` 和 `EUR 1.00` 均规范化为 `EUR 1.00`；JPY 金额规范化为 0 位小数。
+- 零值和负数是合法的 `Money`；正数限制由具体业务规则负责。
+
+### 8.4 运算与比较
+
+- `add`、`subtract`、`compareTo` 及四个语义化比较方法只接受相同币种。
+- 不同币种参与上述操作时抛出 `IllegalArgumentException`，不得隐式换汇。
+- 加减法必须保持当前币种精度，不执行额外舍入。
+- 乘除结果按当前币种精度和调用方传入的 `RoundingMode` 计算。
+- 除数为零时抛出 `ArithmeticException`。
+- 因子和除数可以为正数或负数；业务是否允许负数由调用方约束。
+- 所有操作均不得改变当前对象；对象引用是否复用不属于公开契约。
+
+### 8.5 相等性
+
+- 相同币种且规范化后数值相同的对象必须 `equals`，并产生相同 `hashCode`。
+- 不同币种即使数值相同也不相等。
+- `compareTo` 与 `equals` 在同币种范围内保持一致。
+
+### 8.6 必须覆盖的单元测试
+
+- 类为 `final`、字段为 `private final`、不存在 setter，运算不修改原对象。
+- EUR 两位小数和 JPY 零位小数规范化正确，需要舍入的输入被拒绝。
+- 小写、带空白、未知以及无有效小数位的币种代码被拒绝。
+- `ofMinorUnits` 与 `getMinorUnits` 可以正确往返，超出 `long` 范围被拒绝。
+- 零值、正值和负值判断正确。
+- 同币种加法、减法、绝对值和取反正确。
+- 乘法和除法按调用方指定的 `RoundingMode` 得到不同且正确的结果。
+- 异币种加法、减法和比较均被拒绝。
+- 除数为零被拒绝。
+- 不同输入 scale 的同值金额具有一致的 `equals` 和 `hashCode`。
+- `toString()` 输出稳定格式。
+
+## 9. 待补充设计章节
 
 以下章节在对应决策确认后补充，未确认内容不得由 Agent 自行推断：
 
-1. `Money` 领域契约。
-2. 测试与质量门禁。
-3. 运行状态与交付证据。
-4. 验收场景与完成判定。
+1. 测试与质量门禁。
+2. 运行状态与交付证据。
+3. 验收场景与完成判定。
 
-## 9. 批准记录
+## 10. 批准记录
 
 | 版本 | 日期 | 状态 | 说明 |
 | --- | --- | --- | --- |
@@ -180,3 +260,4 @@ ArchUnit 只能验证实际存在的字节码，不能证明空模块的 POM 依
 | v0.1-draft.2 | 2026-08-13 | Draft | 确认 D-01：冻结 `emi-pilot` 项目标识、交付位置和仓库边界 |
 | v0.1-draft.3 | 2026-08-13 | Draft | 确认 D-02：冻结技术版本、最小依赖策略和干净环境预检门禁 |
 | v0.1-draft.4 | 2026-08-14 | Draft | 确认 D-03：冻结 8 模块拓扑、精确依赖矩阵和最小内容原则 |
+| v0.1-draft.5 | 2026-08-14 | Draft | 确认 D-04：冻结 `Money` 的归属、公开 API、精度、运算、异常和相等性契约 |
