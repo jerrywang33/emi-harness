@@ -1,281 +1,291 @@
-# EMI Harness
+# EMI Harness｜面向欧洲 EMI 的金融级设计到交付智能研发引擎
 
-> **面向欧洲 EMI 的金融级设计到交付智能研发引擎**
->
-> 把经确认的工程意图交给 Agent，同时把边界、验证和证据留在工程里。
+---
 
-| 当前阶段 | 当前能力 | 校准目标 |
-| --- | --- | --- |
-| `v0.1` 最小可运行闭环 | 仅支持 `new-module` | `emi-pilot`：8 模块 Java 工程与 `Money` 值对象 |
+## 要解决的问题
 
-[阶段路线图](roadmap/README.md) · [已批准 SDD](specs/pilot/system-design.md) · [Agent 入口](AGENTS.md) · [运行索引](reports/index.md)
+欧洲 EMI 牌照展业系统建设需要同时应对 EMD2、DORA、GDPR、AML/CFT 与制裁框架等监管要求，并落实客户资金保护、账务一致性、数据治理、运营韧性、金融犯罪防控和全链路审计等金融级工程约束。当前主要存在以下问题：
 
-## 一句话定义
+- **监管与领域知识高度分散**：相关知识分布在法务、合规、风控、安全、运营和研发团队，并受到司法辖区、业务模式、规则版本和生效时间等条件影响，难以形成统一、准确且持续更新的知识体系。
 
-EMI Harness 是一个围绕 Coding Agent 构建的**受控交付环境**。它把规格、上下文、执行边界、验证工具和运行证据组织成同一条链路，使一项工作即使跨越多个 Agent、多个会话和多轮失败，也能继续执行并被独立检查。
+- **监管义务难以工程化落地**：外部监管要求需要经过适用性判断、内部政策解释和业务控制设计，才能转化为软件规格、架构约束、代码配置和测试标准。这条转换链路依赖大量人工理解，容易出现遗漏、歧义和实现偏差。
 
-```text
-可接受的交付
-= 已批准的契约
-+ 有边界的执行
-+ 独立的验证
-+ 可追溯的证据
-+ 用户的最终决定
-```
+- **系统交付依赖少数专家**：需求澄清、方案设计和合规审查高度依赖具备 EMI 业务与金融工程经验的资深人员，导致培养周期长、交付效率低，专家也容易成为多项目并行时的瓶颈。
 
-它不是提示词合集，也不是法规百科，更不是让 Agent 无限制自我修改的自动化平台。
+- **交付质量缺乏稳定性**：不同团队对同一监管要求和业务规则可能产生不同理解，金额、账务、状态、权限、数据处理、韧性和金融犯罪防控等关键控制容易在研发过程中被弱化或遗漏。
 
-## 三个基本判断
+- **缺少端到端追溯与交付证据**：监管义务、内部政策、业务控制、系统规格、代码实现、测试结果和运行证据之间缺少稳定的关联，系统即使完成交付，也难以快速证明“满足了什么要求、由什么控制实现、经过了什么验证”。
 
-### 1. Prompt 不是工程环境
+- **规则变化难以持续传导**：法规、监管解释、内部政策、审计发现和生产事故发生变化后，影响范围难以及时识别，相关规格、代码、测试和控制无法形成一致、受控的更新闭环。
 
-长任务中的问题通常不是“模型不会写代码”，而是目标逐渐漂移、上下文被无关信息占满、规则只被阅读却没有执行、失败结果没有进入下一轮。可靠性不能寄托在一次提示中，必须由仓库里的契约、导航、工具和状态共同提供。
+- **通用 AI Agent 无法直接满足 EMI 研发要求**：通用 Agent 缺少经过治理的权威知识、明确的适用边界、金融级工程约束和独立验证机制，可能放大过期规则、错误解释和无证据结论，无法稳定完成 EMI 系统从设计到交付的可靠性、合规性与可审计性要求。
 
-### 2. 完成声明不是交付证据
+## 解决方案
 
-Executor 可以说明自己做了什么，但不能给自己的交付判定 PASS。验证必须针对明确的 Git commit，由独立上下文执行真实命令，并保存退出码、原始日志和逐项结论。
-
-因此，v0.1 的评测对象是一整次 run，而不是 Agent 的一段回答：输入是否固定、角色是否隔离、门禁是否执行、失败能否回流、状态能否恢复，都属于验收内容。
-
-### 3. 自主执行必须伴随权限边界
-
-Agent 可以在已批准范围内自行规划、实现和修复；涉及规格、测试、规则、验收标准或重大风险判断时，必须停在人工门禁前。所谓自主，不是取消控制，而是减少边界内不必要的人工接力。
-
-## EMI 研发中的断点
-
-EMD2、DORA、GDPR、AML/CFT 与制裁框架不会直接变成代码。它们需要经过一条受治理的转换链：
-
-```mermaid
-flowchart LR
-    source["外部要求与内部政策"] --> applicability["适用性与版本判断"]
-    applicability --> obligation["工程义务与控制目标"]
-    obligation --> contract["SDD 与验收条件"]
-    contract --> implementation["代码、配置与测试"]
-    implementation --> evidence["验证结果与审计证据"]
-```
-
-EMI 系统的交付风险，往往出现在这些节点之间，而不是单个编码动作中。
-
-| 常见断点 | Harness 的处理方式 |
-| --- | --- |
-| 监管、业务和工程知识分散在不同团队 | 先把已确认结论写入有版本、有范围的交付契约，不让 Agent 补猜缺失信息 |
-| 外部义务无法稳定转换为软件控制 | 在 SDD 中明确控制目标、实现边界和可执行验收场景 |
-| 关键经验只存在于少数专家脑中 | 将可复用经验拆成按需加载的 Convention、Guardrail 和 Workflow |
-| 长任务跨会话后丢失进度 | 使用 `manifest.md`、attempt、报告和 commit 保存可恢复状态 |
-| 实现者同时充当验收者 | 分离 Executor 与 Verifier，正式结论只接受独立验证证据 |
-| 交付结束后才补审计材料 | 在执行过程中同步生成任务、日志、报告和用户决策记录 |
-
-EMI Harness v0.1 **不负责解释法规，也不包含 EMI 监管知识库**。当前阶段验证的是：当适用要求已经获得确认后，能否把它们稳定地带入设计、实现、验证和证据链。监管知识的治理方式将在真实业务输入出现后单独设计。
-
-## 运行闭环
-
-```mermaid
-flowchart TB
-    goal["用户目标"] --> contract["交付契约<br/>SDD + 验收条件"]
-    contract --> approval{"用户批准?"}
-    approval -->|否| contract
-    approval -->|是| context["最小上下文包<br/>任务 + 相关规则 + 目标 commit"]
-    context --> execute["Executor<br/>实现 + 自测 + 提交"]
-    execute --> verify["Verifier<br/>独立检查 + 正式命令"]
-    verify -->|FAIL| feedback["失败包<br/>问题 + 原始证据 + 复现方式"]
-    feedback --> context
-    verify -->|PASS| acceptance["用户最终验收"]
-    acceptance --> archive["归档状态与证据"]
-```
-
-每次 FAIL 都进入新的 attempt，历史证据保持只读；连续三次仍未通过则停止自动执行并升级给用户。
-
-### 我们所说的“持续”
-
-| 能力 | 在 EMI Harness 中的含义 | 不依赖什么 |
-| --- | --- | --- |
-| 持续感知 | 读取当前规格、Git 状态、任务状态和工具输出 | 不依赖 Agent 对历史对话的记忆 |
-| 持续反馈 | 把失败项、退出码、日志和复现命令送入下一轮 | 不依赖一句“测试没问题” |
-| 持续优化 | 从真实失败中提出规格、规则或流程改进，并经人工评审后生效 | 不允许运行中的 Agent 直接改规则让自己通过 |
-
-v0.1 先闭合前两项，并记录第三项所需的真实缺口；暂不建设自动进化机制。
-
-## 五个工程面
-
-Harness 的能力不由文件数量衡量。一个文件只有在工作流中被实际加载、执行或生成，才属于有效系统。
-
-| 工程面 | 回答的问题 | 当前载体 |
-| --- | --- | --- |
-| **契约** | 这次究竟交付什么，什么算完成？ | `specs/`、`templates/`、用户批准记录 |
-| **上下文** | 当前角色此刻需要知道什么？ | `AGENTS.md`、`conventions/`、`harness/guardrails/` |
-| **编排** | 谁在何时做什么，遇到分支如何处理？ | `skills/`、`harness/workflow/`、`harness/tools/` |
-| **反馈** | 哪些结果可以客观判定，失败如何返回？ | `harness/feedback/`、独立 Verifier |
-| **记忆** | 换一个 Agent 后怎样恢复，审计时怎样还原？ | run manifest、attempt 报告、原始日志和 Git commit |
-
-这五个面共同构成 Agent 的运行环境。单独增加文档、规则或 Agent 数量，都不能替代闭环。
-
-## 当前运行拓扑
-
-v0.1 只保留完成闭环所必需的三个 Agent 角色。用户不是旁观者，而是规格变更和最终验收的决策边界。
-
-```mermaid
-sequenceDiagram
-    actor U as User
-    participant C as Coordinator
-    participant E as Executor
-    participant V as Verifier
-
-    U->>C: 目标、约束与批准
-    C->>E: 当前 attempt 的最小执行包
-    E-->>C: 代码 commit、自测与执行报告
-    C->>V: SDD、验证规则与待验证 commit
-    V-->>C: 独立结论、原始日志与复现方式
-    alt FAIL
-        C->>E: 新 attempt 的失败反馈包
-    else PASS
-        C->>U: 验收清单与完整证据
-    end
-```
-
-| 角色 | 负责 | 无权做 |
-| --- | --- | --- |
-| **Coordinator** | 维护契约引用、任务、状态、门禁和角色交接 | 编写业务实现；代替 Verifier 或用户下结论 |
-| **Executor** | 在当前 attempt 的批准范围内实现、自测并提交 | 修改 SDD、降低门禁；宣告正式 PASS |
-| **Verifier** | 用全新上下文检查指定 commit，执行唯一正式验证并留证 | 修改实现或规则；用 Executor 的声明代替验证 |
-
-Explore、Test、Reviewer 等角色只有在实际任务证明需要独立上下文和独立产物时才会引入，不作为“多 Agent”展示而预设。
-
-## EMI 控制如何进入工程
-
-外部规则进入 Harness 前，必须先完成来源、适用范围、司法辖区、版本和生效时间判断。需要法律解释或重大风险取舍的内容始终由人负责。
+把 EMI 系统研发所需的监管规则、业务规范、架构约束和质量检查沉淀到 Harness 中。先通过 SDD 明确业务需求、监管要求和验收标准，再由 AI Agent 按统一流程完成设计、编码和测试，并通过自动化检查与人工审查验证结果。每次交付保留需求、设计、代码变更、测试结果和审查记录，便于追溯问题和持续更新规则。
 
 ```text
-来源
-  -> 适用性判断                         [人工负责]
-  -> 工程义务 / 控制目标                 [写入 SDD]
-  -> 强制方式                           [工具 / 独立审查 / 人工门禁]
-  -> 验收证据                           [日志 / 报告 / commit / 决策]
+SDD（规格）      → 定义「做什么」
+Harness（约束）  → 规定「怎么做、怎么检查」
+交付记录          → 说明「做了什么、是否通过」
 ```
 
-| 控制类型 | 适合的强制方式 | 示例 |
-| --- | --- | --- |
-| 可确定判断 | 自动化硬门禁 | 编译、金额精度测试、模块依赖、静态规则 |
-| 需要语义判断 | 独立 Agent 审查并给出证据 | 业务控制是否完整、设计是否符合已批准 SDD |
-| 涉及监管解释或高风险取舍 | 人工确认 | 规则是否适用、例外是否可接受、测试或验收是否允许调整 |
+## 核心理念
 
-后续面向客户资金保护、账务一致性、数据保护、运营韧性、AML/CFT 和制裁控制的能力，都应沿这条链路进入，而不是把法规文本直接塞给 Agent。
+### Spec Driven Development（规格驱动开发）
 
-## 当前能力边界
+**核心原则**：在 Agent 开始实现前，先明确本次交付的范围、关键规则和验收方式；未确认的问题必须显式记录，不允许 Agent 自行猜测。
 
-| 已进入 v0.1 闭环 | 尚未进入当前范围 |
-| --- | --- |
-| 一个 `new-module` 工作流 | `new-feature`、`refactor` 等其他任务类型 |
-| Coordinator、Executor、Verifier 三角色交接 | 复杂 Agent 调度平台和预设角色集群 |
-| Approved SDD 与用户门禁 | EMI 法规解释或监管知识库 |
-| Maven、JUnit、Checkstyle、ArchUnit 客观验证 | 数据库、MQ、支付渠道、银行、KYC、AML 或制裁系统接入 |
-| 最多三轮、证据驱动的失败回流 | Agent 自动修改 Harness 或自我进化 |
-| run-id、manifest、报告、日志和 Git 追溯 | PRD 生成及其他尚未被真实试跑证明需要的能力 |
+- **按风险确定规格深度**：高风险或跨系统变更需要完整 SDD；低风险局部改动可以使用精简规格。
+- **要求来源可追溯**：关键设计应关联到业务需求、经过确认的监管要求或内部政策。
+- **要求结果可验证**：每项关键要求都应有对应的验收场景、测试或人工检查方式。
+- **保持同步变更**：需求、规格、代码和测试应在同一次变更中保持一致。
 
-当前实现有意保持简单：文件保存状态，Skill 启动流程，Agent 执行角色职责，Maven 和 Shell 提供客观反馈。先证明闭环，再决定是否需要平台化。
+### Harness Engineering（约束工程）
+
+**核心原则**：把适用于当前任务的关键规则放入 Agent 的执行流程，并为每条关键规则明确检查方式。只有实际参与检查或门禁的规则，才构成有效约束。
+
+- **按适用范围加载**：根据国家、业务、系统、任务类型和规则版本加载必要约束，避免无关规则干扰执行。
+- **按执行方式分级**：可确定判断的规则由工具强制检查；需要语义判断的规则由独立 Agent 审查；涉及监管解释或重大风险的事项由人工确认。
+- **硬门禁独立执行**：关键检查应由 CI、测试、权限控制或专用工具执行，不能依赖执行 Agent 自觉遵守。
+- **失败必须闭环**：检查失败后返回明确原因，修复后重新验证；超过重试次数或无法判断时升级给人。
+- **规则受控更新**：执行过程中可以提出规则改进建议，但必须经过评审和验证后才能生效。
+- **验证后才能交付**：Agent 完成代码不代表任务完成。只有 SDD 约定的测试、质量检查和必要的人工审查全部通过后，才能交付；未通过则返回修复。
+
+## 多 Agent 协作架构
+
+### 设计原则
+
+EMI 系统代码量大，业务与监管规则复杂，单一 Agent 执行容易导致上下文超载。EMI Harness 采用 **主 Agent + 多子 Agent** 分工协作：
+
+```mermaid
+flowchart TD
+    coordinator["主 Agent（Coordinator）\n规划任务、分配任务、检查结果"]
+    coordinator -->|派发| explore["Explore Agent\n扫描代码结构"]
+    coordinator -->|派发| executor["Executor Agent\n执行具体变更任务"]
+    coordinator -->|派发| tester["Test Agent\n编写 EMI 场景测试"]
+    coordinator -->|派发| verifier["Verifier Agent\n质量门禁验证"]
+    coordinator -->|派发| reviewer["Reviewer Agent\n功能与控制审查"]
+    coordinator -->|执行| retrospect["复盘 + 问题记录"]
+
+    explore -->|报告| coordinator
+    executor -->|报告| coordinator
+    tester -->|报告| coordinator
+    verifier -->|报告| coordinator
+    reviewer -->|报告| coordinator
+```
+
+### 职责分离
+
+| 角色 | 职责 | 加载的上下文 |
+|------|------|-------------|
+| **Coordinator（主 Agent）** | 规划任务、分配子 Agent、检查执行结果、组织复盘 | 项目导航 + SDD + 任务清单 |
+| **Explore Agent** | 扫描源码结构、提取领域模型 | 当前任务涉及的源码文件 |
+| **Executor Agent** | 执行具体变更任务 | 当前变更任务 + 对应约束 |
+| **Test Agent** | 编写 EMI 业务与合规场景测试 | SDD 验收标准 + 测试清单 + 被测代码 |
+| **Verifier Agent** | 运行质量门禁和约束检查 | 质量规则 + 约束规则 + 全量变更 |
+| **Reviewer Agent** | 检查功能、业务控制及重构前后的一致性 | SDD + 原有实现基线 + 变更后代码 |
+
+### 上下文管理
+
+- **每个子 Agent 执行完即释放上下文**，不累积无关历史。
+- **主 Agent 只保留 SDD、任务清单、项目导航和子 Agent 报告**，不加载全部源码。
+- **子 Agent 只加载当前任务涉及的文件和对应约束**，避免无关信息干扰执行。
+- **通过 SDD、任务清单、报告和执行日志传递信息**，不依赖 Agent 之间共享对话上下文。
 
 ## 8 模块架构
 
-8 模块是 **`emi-pilot` 首次试跑的校准骨架**，用于检验结构约束、依赖方向和跨模块验证；它不是 EMI Harness 自身的目录结构，也不预设未来每个 EMI 系统都必须机械复制八个模块。
+EMI Harness 生成或改造的每个业务系统，统一采用 8 模块 Maven 工程结构。`{system}` 表示具体业务系统名称；v0.1 首次试跑使用 Java 17 和 Spring Boot 4.1.0。
 
-| 职责带 | 模块 | 首次试跑中的定位 |
-| --- | --- | --- |
-| 对外契约 | `{system}-client` | Facade 与 Request/Response 契约；无外部契约时不生成占位代码 |
-| 应用入口 | `{system}-adapter` | REST、MQ、Scheduler 等入口按需组装 |
-| 用例编排 | `{system}-app` | 应用服务、事务、幂等以及业务语义 Gateway 接口 |
-| 领域规则 | `{system}-domain` | 聚合、值对象、DomainService 和 Repository 接口 |
-| 技术实现 | `{system}-infra` | Repository/Gateway 实现及数据库、消息、渠道等适配 |
-| 启动装配 | `{system}-start` | Spring Boot 启动入口与应用装配 |
-| 最小共享 | `{system}-common` | 极少量无业务归属的基础能力，防止形成公共垃圾场 |
-| 跨模块证明 | `{system}-test` | 模块结构、ArchUnit 和跨模块场景；模块单测仍留在所属模块 |
+| 模块 | 职责 |
+|------|------|
+| **`{system}-client`** | 对外契约：Facade 接口和 Request/Response DTO，可独立发布给其他系统依赖，不包含实现代码。 |
+| **`{system}-adapter`** | 应用入口聚合器，按需提供 REST Controller、MQ Consumer 和 Scheduler。 |
+| **`{system}-app`** | 应用编排：Facade 实现、AppService、事务、幂等、Command/Result、转换器以及业务语义 Gateway 接口。 |
+| **`{system}-domain`** | 领域模型与领域规则：聚合根、状态机、DomainService、Repository 接口以及领域数据载体。具体承载账户、支付、账务、资金保护等当前系统的业务规则。 |
+| **`{system}-infra`** | 基础设施实现：Repository/Gateway 实现、Mapper、PO、数据库、MQ、Redis、ID 生成，以及银行、支付渠道、KYC、AML 和制裁筛查等外部系统接入。 |
+| **`{system}-start`** | Spring Boot 启动入口和应用装配。 |
+| **`{system}-common`** | 极少量通用基础能力；业务 DTO、Repository、Gateway、枚举和常量不得放入该模块。 |
+| **`{system}-test`** | 跨模块集成测试、ArchUnit 架构约束测试，以及 EMI 关键业务与合规场景测试；模块内单元测试仍放在各自模块。 |
 
-首次试跑冻结的依赖集合为：
+### 依赖方向
 
-```text
-start   -> adapter, app, infra, client, domain, common
-adapter -> app, common
-app     -> client, domain, common
-infra   -> app, domain, client, common
-domain  -> common
-client  -> common
-test    -> 其余 7 个模块（test scope）
+```mermaid
+flowchart TD
+    start["{system}-start"] --> adapter["{system}-adapter"]
+    start --> app["{system}-app"]
+    start --> infra["{system}-infra"]
+    start --> client["{system}-client"]
+    start --> domain["{system}-domain"]
+    start --> common["{system}-common"]
+    adapter --> app
+    adapter --> common
+    app --> client
+    app --> domain
+    app --> common
+    infra --> app
+    infra --> domain
+    infra --> client
+    infra --> common
+    domain --> common
+    client --> common
 ```
 
-完整职责和约束见 [`conventions/module-structure.md`](conventions/module-structure.md)；首次试跑的精确依赖矩阵以 [`specs/pilot/system-design.md`](specs/pilot/system-design.md) 为准。
+### 核心约束
 
-## 一次交付留下什么
+- `domain` 不依赖 `infra`，Repository 接口定义在 `domain`，实现在 `infra`。
+- `app` 不依赖 `infra`，业务语义 Gateway 接口定义在 `app`，实现在 `infra`。
+- `adapter` 只通过 `app` 访问业务能力，不直接访问 `domain` 或 `infra`。
+- `client` 只保存对外契约，不包含业务实现。
+- `common` 保持最小化，不能成为跨层依赖的业务代码堆放区。
 
-运行证据保存在目标项目，而不是混入 Harness 规则仓库。
+## 核心工作流
+
+```mermaid
+flowchart LR
+    propose["1. propose\n提出变更\nWHY"]
+    specify["2. specify\n编写 SDD\nWHAT"]
+    design["3. design\n技术方案\nHOW"]
+    tasks["4. tasks\n任务分解\n分配子 Agent"]
+    implement["5. implement\n执行变更\n编译和单测"]
+    verify["6. verify\n测试、门禁\n约束检查"]
+    retrospect["7. retrospect\n复盘\n问题记录"]
+    archive["8. archive\n归档交付证据"]
+
+    propose --> specify --> design --> tasks --> implement --> verify --> retrospect --> archive
+```
+
+| 步骤 | 执行者 | 输入 | 输出 |
+|------|--------|------|------|
+| **propose** | 用户 / Coordinator | 业务需求、监管要求、内部政策、审计发现或生产问题 | 说明变更原因、目标和初步范围的变更提案 |
+| **specify** | Coordinator | 变更提案 + 规格模板 | 明确范围、业务规则、适用约束和验收标准的 SDD |
+| **design** | Coordinator | 已确认的 SDD | 写入 SDD 的领域模型、接口、数据、异常处理和技术方案 |
+| **tasks** | Coordinator | SDD + 技术方案 | 范围明确、可独立验证的任务清单及子 Agent 分工 |
+| **implement** | Executor Agent | 单个变更任务 + 对应约束 | 代码变更、编译结果和相关单元测试结果 |
+| **verify** | Verifier Agent + Test Agent | 全量变更 + SDD 验收标准 + 约束规则 | `mvn verify`、架构与反模式检查、EMI 场景测试及验证报告 |
+| **retrospect** | Coordinator，用户确认 | 执行日志 + 验证报告 | 规格、规则、测试和执行过程的复盘报告及问题记录 |
+| **archive** | Coordinator | SDD + 任务记录 + 交付证据 + 复盘报告 | 归档到业务项目的完整交付记录 |
+
+### 关键门禁
+
+| 门禁 | 阶段 | 未通过处理 |
+|------|------|-----------|
+| 需求与验收标准确认 | specify / design | 未确认的问题记录在 SDD 中，不进入实现 |
+| `mvn compile` + 相关单元测试 | 每个 implement 任务完成后 | 返回 Executor 修复并重新执行 |
+| `mvn verify` | verify | 修复后重新验证；超过重试次数则升级给人 |
+| 架构、反模式和关键约束检查 | verify | 必须消除本次变更新增的 MUST 违规 |
+| EMI 业务与合规场景测试 | verify | 修复实现或补充规格后重新验证 |
+| 最终交付确认 | archive 前 | 所有要求的检查和人工审查通过后才能归档交付 |
+
+交付证据保存在对应业务项目中。复盘只记录本次执行中发现的问题，不自动生成或应用 Harness 改进；确需调整 Harness 时，作为普通变更单独提出并经过人工评审。
+
+## 框架结构
+
+第一阶段只建设一个可运行的最小闭环：支持一个 `new-module` 任务，由 Coordinator、Executor 和 Verifier 三个角色完成规划、执行、独立验证与失败回流。目录中的每个文件都必须被该闭环实际读取或生成；未进入首次运行链路的能力不提前建设。
+
+### 最小运行闭环
+
+```mermaid
+flowchart LR
+    goal["用户目标"] --> plan["Coordinator\nSDD + 验收条件 + 任务"]
+    plan --> confirm["用户确认"]
+    confirm --> execute["Executor\n实现 + 自测"]
+    execute --> verify["Verifier\n独立验收 + 质量检查"]
+    verify -->|FAIL，最多 3 轮| execute
+    verify -->|PASS| accept["用户验收"]
+    accept --> archive["归档证据"]
+```
+
+- **Coordinator** 只管理目标、SDD、任务、运行状态和角色交接，不直接实现业务代码。
+- **Executor** 只获取当前任务、相关 SDD 和必要 Guardrail，完成代码与自测。
+- **Verifier** 使用全新上下文，基于 SDD 验收条件和客观命令独立判定，不依赖 Executor 的实现思路或完成声明。
+- 验证失败时，Verifier 必须输出失败项、证据和复现方式；Coordinator 将该报告交回 Executor。
+- 连续三轮仍未达到验收条件时停止自动执行，记录当前状态并升级给用户。
+
+### 最小目录树
+
+```text
+emi-harness/
+├── README.md
+├── AGENTS.md                       # Agent 导航入口和按需加载地图
+├── install.sh                      # 记录 Harness 路径并安装 Skill
+│
+├── roadmap/
+│   └── README.md                    # 阶段目标、实施计划和当前进度
+│
+├── specs/
+│   └── pilot/
+│       └── system-design.md          # 首次试跑的 SDD 与验收条件
+│
+├── conventions/
+│   ├── tech-stack.md                 # 首次试跑使用的已确认技术栈
+│   └── module-structure.md           # 8 模块职责与依赖方向
+│
+├── harness/
+│   ├── guardrails/
+│   │   ├── core-must-rules.md        # 首个闭环必须遵守的最小规则集
+│   │   ├── architecture.md           # 8 模块架构约束
+│   │   ├── domain-modeling.md        # Money 和领域对象约束
+│   │   └── code-style.md             # 首次试跑需要的代码规范
+│   ├── feedback/
+│   │   ├── code-quality.md           # 唯一验证命令、通过标准和失败处理
+│   │   ├── maven/                    # Maven 质量插件配置
+│   │   ├── checkstyle/               # 最小 Checkstyle 规则
+│   │   └── archunit/                 # 8 模块依赖测试模板
+│   ├── tools/
+│   │   └── agent-tools.md            # 创建 SDD、生成骨架、执行验证和记录证据
+│   ├── workflow/
+│   │   └── new-module.md             # 首个闭环的单一工作流
+│   └── observability/
+│       └── execution-tracing.md       # run-id、阶段、轮次、交接和结果记录
+│
+├── templates/
+│   ├── sdd-template.md                # 最小 SDD 模板
+│   └── task-breakdown-template.md     # 任务、验收条件和进度模板
+│
+├── scaffolds/
+│   └── module-structure.md            # 可编译的 8 模块 Maven 骨架
+│
+├── skills/
+│   └── emi-harness/
+│       ├── SKILL.md                   # 读取路径并启动 new-module Workflow
+│       └── agents/
+│           └── openai.yaml            # Codex Skill 展示与默认触发信息
+│
+└── reports/
+    └── index.md                       # 首次及后续执行的全局索引
+```
+
+### 运行状态与证据
+
+Agent 的完成声明不作为运行状态。Coordinator 必须将状态、交接和原始验证证据写入目标项目，使任务可以在新上下文中继续执行。
 
 ```text
 {target-project}/reports/runs/{run-id}/
-├── manifest.md                 # 当前状态、角色、attempt、commit 和下一动作
-├── task-breakdown.md           # 任务、验收条件和事实进度
-├── acceptance.md               # 用户的最终结论
-├── retrospective.md            # 本次运行暴露的真实缺口
-├── quality/                    # run 级环境与有效配置证据
+├── manifest.md                       # 目标、当前阶段、尝试轮次、交接和最终状态
+├── task-breakdown.md                 # 当前任务、验收条件和完成证据
+├── acceptance.md                     # 最终验收清单和用户结论
+├── retrospective.md                  # 首次运行暴露的真实缺口
+├── quality/
+│   ├── environment-preflight.log     # Java、Maven 和依赖解析预检
+│   ├── preflight-pom.xml             # 验证 Spring Boot Parent 可公开解析
+│   └── effective-pom.xml             # 首次运行实际生效的 Maven 版本
 └── attempts/
-    └── {attempt}/
-        ├── executor-report.md  # 实现范围、自测和交接事实
-        ├── verifier-report.md  # 独立 PASS / FAIL 与复现方式
+    └── 01/
+        ├── executor-report.md         # 本轮变更摘要、自测和交接 commit
+        ├── verifier-report.md         # 本轮独立 PASS/FAIL 结论与复现方式
         └── quality/
-            └── verify.log      # 正式命令的原始输出
+            └── verify.log             # 本轮原始验证命令输出
 ```
 
-`manifest.md` 是恢复运行的事实入口。新 Agent 必须从它引用的路径和 commit 恢复，不得用历史聊天记录补写状态。
+### 首次试跑
 
-以下条件缺一不可：
+首个目标是创建一个最小 8 模块 Java 17 Maven 工程，并实现不可变 `Money` 值对象及单元测试。本次运行只有在以下条件全部满足时才能完成：
 
-- 待交付范围已经写入 SDD 并获得批准。
-- Executor 的变更和报告已经提交，工作区边界清楚。
-- Verifier 针对指定 commit 独立执行规定命令并给出证据。
-- 所有必须门禁通过，失败历史没有被覆盖或删除。
+- 8 个 Maven 模块可由根工程统一编译。
+- `Money` 的不可变性、同币种运算和异币种拒绝具有单元测试。
+- `mvn verify` 返回成功，Checkstyle 和 ArchUnit 检查通过。
+- `manifest.md`、Verifier 报告和原始验证日志完整，且可以相互追溯。
 - 用户完成最终验收。
 
-“Agent 已生成代码”不属于完成条件。
-
-## 仓库如何分工
-
-| 路径 | 作用 | 主要使用者 |
-| --- | --- | --- |
-| [`README.md`](README.md)、[`roadmap/`](roadmap/README.md) | 项目定位、边界与阶段计划 | 人 |
-| [`AGENTS.md`](AGENTS.md) | 统一入口、优先级和按角色加载地图 | Coordinator 与各角色 Agent |
-| [`specs/`](specs/pilot/system-design.md)、[`templates/`](templates/) | 交付契约及任务模板 | 用户、Coordinator |
-| [`conventions/`](conventions/)、[`harness/guardrails/`](harness/guardrails/) | 技术基线、架构边界和不可绕过规则 | Executor、Verifier |
-| [`skills/`](skills/emi-harness/SKILL.md)、[`harness/workflow/`](harness/workflow/new-module.md)、[`harness/tools/`](harness/tools/agent-tools.md) | 启动、编排和标准操作 | Coordinator |
-| [`harness/feedback/`](harness/feedback/code-quality.md) | 正式验证命令、质量配置和失败判定 | Verifier |
-| [`harness/observability/`](harness/observability/execution-tracing.md) | 状态机、证据字段和恢复规范 | Coordinator、Verifier |
-| [`scaffolds/`](scaffolds/module-structure.md) | 经批准的生成结构 | Executor |
-| [`reports/`](reports/index.md) | 跨运行索引，不复制目标项目完整证据 | 人、Coordinator |
-
-Harness 仓库保存“如何交付”；目标业务仓库保存“本次交付了什么”。两者通过 run-id 和 Git commit 关联。
-
-## 首次试跑
-
-首次试跑并不是为了证明 Agent 会实现一个 `Money` 类，而是验证：一个没有历史对话的新 Agent，能否只依赖仓库中的规格、规则、工作流和反馈，完成一次可执行、可验证、可追溯、可恢复的交付。
-
-校准任务使用 Java 17、Maven 和 Spring Boot 4.1.0，目标项目为独立的本地 `emi-pilot` 仓库。只有以下结果全部成立，v0.1 才能结束：
-
-- 根工程和精确 8 个模块能够在固定环境中完成 Reactor 构建。
-- 不可变 `Money` 的精度、运算、比较、异常和相等性契约具有实际执行的测试。
-- 唯一正式 `clean verify` 命令退出码为 `0`，指定测试、Checkstyle 和 ArchUnit 均实际运行。
-- FAIL 能携带原始证据进入下一 attempt，并在达到上限时停止。
-- 新 Agent 可以仅根据 manifest 和提交记录恢复运行。
-- 全部目标、变更、验证和决策可由同一个 run-id 追溯。
-- 用户完成最终验收。
-
-在首次闭环跑通前，不增加监管知识目录、其他工作流、外部系统接入、复杂调度或自动进化。真实运行暴露的缺口，才是下一阶段 Roadmap 的输入。
-
-## 从这里开始
-
-1. 阅读 [`roadmap/README.md`](roadmap/README.md)，了解当前阶段及退出条件。
-2. 阅读 [`specs/pilot/system-design.md`](specs/pilot/system-design.md)，确认首次试跑的 Approved 契约。
-3. 在 Harness 根目录执行安装：
-
-   ```bash
-   bash install.sh
-   ```
-
-   安装脚本记录当前 Harness 绝对路径，并将仓库内 `emi-harness` Skill 链接到本机 Codex Skill 目录。
-
-4. Agent 从 [`AGENTS.md`](AGENTS.md) 进入，只加载当前角色所需的规则和流程。
-5. 具体执行状态以目标项目的 `reports/runs/{run-id}/manifest.md` 为准。
+在这个闭环实际跑通前，不增加 `new-feature`、`refactor`、分层 Skill、监管知识目录、PRD 生成、外部接入或 Harness 自我进化机制。首次运行暴露的真实缺口，作为后续目录和能力扩展的依据。
