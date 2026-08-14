@@ -7,7 +7,7 @@
 <module name="Checker">
     <property name="charset" value="UTF-8"/>
     <property name="severity" value="error"/>
-    <property name="fileExtension" value="java"/>
+    <property name="fileExtensions" value="java"/>
 
     <module name="BeforeExecutionExclusionFileFilter">
         <property name="fileNamePattern" value=".*[\\/]generated-sources[\\/].*"/>
