@@ -49,7 +49,7 @@
 | D-03 | 8 模块完成度 | 每个模块必须包含的最小内容及精确依赖关系 | 已确认 |
 | D-04 | `Money` 契约 | 所属模块、创建、规范化、运算、比较、异常和相等性语义 | 已确认 |
 | D-05 | 自动化门禁 | 插件版本、规则范围、唯一验证命令及禁止绕过方式 | 已确认 |
-| D-06 | 验收与证据 | 可执行验收场景、报告字段、日志和 `run-id` 追溯关系 | 待确认 |
+| D-06 | 验收与证据 | 可执行验收场景、报告字段、日志和 `run-id` 追溯关系 | 已确认 |
 
 ## 5. 项目标识与交付位置
 
@@ -278,7 +278,7 @@ Verifier 只有在以下条件全部满足时才能判定 `PASS`：
 - Maven Reactor 中根工程和 8 个子模块全部为 `SUCCESS`。
 - `MoneyTest`、`MoneyImmutabilityTest`、`ModuleStructureTest` 和 `LayerDependencyArchTest` 均被实际发现并执行，且没有失败或错误。
 - Checkstyle 被实际执行并报告零违规。
-- 完整原始命令输出已写入 `reports/runs/{run-id}/quality/verify.log`。
+- 完整原始命令输出已写入 `reports/runs/{run-id}/attempts/{attempt}/quality/verify.log`。
 
 命令退出码为 `0` 但缺少任一指定测试、Checkstyle 执行记录或完整日志时，仍判定为 `FAIL`。
 
@@ -298,14 +298,126 @@ Verifier 只有在以下条件全部满足时才能判定 `PASS`：
 
 PMD、P3C、SpotBugs、JaCoCo 和 SonarQube 不进入首次闭环。首轮运行完成后，根据实际缺口逐项评估，不得因为 demo 已存在配置就一次性引入。
 
-## 10. 待补充设计章节
+## 10. 运行状态、验收与证据
 
-以下章节在对应决策确认后补充，未确认内容不得由 Agent 自行推断：
+### 10.1 Run ID
 
-1. 运行状态与交付证据。
-2. 验收场景与完成判定。
+每次运行由 Coordinator 分配唯一且不可变的 `run-id`：
 
-## 11. 批准记录
+```text
+{YYYYMMDD}-{NNN}-new-module-emi-pilot
+```
+
+- 日期使用运行开始时的 Asia/Shanghai 自然日。
+- `NNN` 是当日三位递增序号，从 `001` 开始。
+- Coordinator 通过目标项目现有运行目录确定下一个可用序号，创建目录后不得改名或复用。
+- Harness commit、SDD commit、目标仓库和全部运行证据都通过该 `run-id` 关联。
+
+### 10.2 证据目录
+
+运行证据保存在 `emi-pilot` 目标仓库：
+
+```text
+reports/runs/{run-id}/
+├── manifest.md
+├── task-breakdown.md
+├── acceptance.md
+├── retrospective.md
+├── quality/
+│   ├── environment-preflight.log
+│   ├── effective-pom.xml
+│   └── feedback-loop-drill.log       # 仅在没有自然 FAIL 时生成
+└── attempts/
+    ├── 01/
+    │   ├── executor-report.md
+    │   ├── verifier-report.md
+    │   └── quality/
+    │       └── verify.log
+    ├── 02/                            # 发生第一次回流时创建
+    └── 03/                            # 发生第二次回流时创建
+```
+
+- attempt 从 `01` 开始，每次 Executor 接收新的修复交接后递增。
+- 已完成交接的 attempt 目录只读，不得覆盖或删除；后续结果写入新的 attempt。
+- 环境预检和有效 POM 属于 run 级证据，不随 attempt 重复生成。
+- `acceptance.md` 和 `retrospective.md` 在最终验收阶段完成。
+- 完成运行后，在 EMI Harness 的 `reports/index.md` 增加索引，但不复制目标项目的完整证据。
+
+### 10.3 运行状态
+
+主流程状态如下：
+
+```text
+PLANNING
+→ AWAITING_PLAN_APPROVAL
+→ EXECUTING
+→ VERIFYING
+→ REWORK_REQUIRED → EXECUTING
+→ AWAITING_FINAL_ACCEPTANCE
+→ COMPLETED
+```
+
+补充状态：
+
+| 状态 | 含义 | 后续处理 |
+| --- | --- | --- |
+| `BLOCKED` | 环境或外部前置条件不满足 | 记录原因和恢复状态，条件满足后由 Coordinator 恢复 |
+| `ESCALATED` | 第 3 次验证仍为 FAIL，或发生 Agent 无权决定的问题 | 停止自动执行，等待用户决策 |
+| `CANCELLED` | 用户明确取消运行 | 记录原因并停止，不复用该 `run-id` |
+
+一次运行最多包含 3 个 Executor-Verifier attempt。第 1 或第 2 次验证失败时进入 `REWORK_REQUIRED`；Coordinator 将完整失败报告交给下一轮 Executor。第 3 次仍失败时进入 `ESCALATED`，不得继续自动修改。
+
+Verifier 通过后只能进入 `AWAITING_FINAL_ACCEPTANCE`。只有用户验收、证据归档和最终 Git 状态全部完成后，Coordinator 才能将运行标记为 `COMPLETED`。
+
+### 10.4 Manifest 必填字段
+
+`manifest.md` 至少记录：
+
+- `run-id`、任务类型、创建时间和最后更新时间。
+- Harness 仓库地址、Harness commit、SDD 路径和 SDD commit。
+- 目标项目绝对路径、Git 仓库、分支、起始 commit 和当前 commit。
+- 当前状态、当前 attempt、最大 attempt 和当前责任角色。
+- 最近完成的交付物、下一步动作、阻塞原因和恢复状态。
+- 用户对计划和最终结果的确认记录。
+- 每个 attempt 的 Executor commit、Verifier 结论和证据路径。
+- 最终结论以及 `acceptance.md`、`retrospective.md` 的路径。
+
+任何 Agent 的口头完成声明都不能替代 manifest 状态。每次角色交接前必须先更新对应报告，再由 Coordinator 更新 manifest。
+
+### 10.5 角色证据边界
+
+- Coordinator 维护 `manifest.md` 和 `task-breakdown.md`，不得代替 Executor 或 Verifier 写完成结论。
+- Executor 只写当前 attempt 的 `executor-report.md`，记录加载的规格与规则、变更文件、自测命令、退出码、已知问题和交接 commit。
+- Verifier 使用全新上下文，只接收 SDD、验证规则、目标路径和待验证 commit；形成初始结论前不读取 Executor 的完成声明。
+- Verifier 写入当前 attempt 的 `verifier-report.md` 和原始 `verify.log`，逐项给出 PASS/FAIL、证据路径和复现方式。
+- 用户最终结论记录在 `acceptance.md`，Coordinator 不得代签。
+
+报告和日志提交前必须检查是否包含凭据、令牌或 Maven settings 内容。发现敏感信息时不得提交；应先停止、处置凭据暴露原因并重新产生不含敏感信息的原始运行日志。
+
+### 10.6 可执行验收场景
+
+| 编号 | 验收内容 | 最小证据 |
+| --- | --- | --- |
+| AC-01 | 根 POM 和 8 个模块符合精确依赖矩阵 | `ModuleStructureTest` 结果、Verifier 报告、`verify.log` |
+| AC-02 | `Money` 完整满足第 8 节契约 | domain 单元测试结果、Verifier 报告、`verify.log` |
+| AC-03 | 唯一 `clean verify` 门禁完整通过 | 命令退出码、Reactor Summary、Checkstyle 和测试输出 |
+| AC-04 | Verifier 使用全新上下文独立验收 | Verifier 报告中的上下文清单和独立结论 |
+| AC-05 | FAIL 能携带证据回流，且最多执行 3 个 attempt | 历史 attempt；无自然 FAIL 时使用受控演练日志和复盘记录 |
+| AC-06 | 新 Agent 能根据落盘状态恢复运行 | manifest 恢复检查和新上下文记录 |
+| AC-07 | 全部报告、日志和 Git commit 可由同一 `run-id` 追溯 | manifest 证据索引和目标 Git 历史 |
+| AC-08 | 用户完成最终验收 | `acceptance.md` |
+
+如果正常交付没有自然发生 FAIL，必须在不污染最终交付分支的临时分支或独立工作树中执行一次受控失败演练。Verifier 必须识别失败，Coordinator 必须形成回流记录；原始输出写入 `quality/feedback-loop-drill.log`，结论写入 `retrospective.md`。该演练不计入交付 attempt。
+
+### 10.7 完成判定
+
+首次运行只有在 AC-01 至 AC-08 全部通过、所有证据已提交到目标 Git 仓库且用户完成最终验收后，才能标记为 `COMPLETED`。任一证据缺失、无法追溯或依赖历史对话才能解释时，均不得完成。
+
+## 11. 最终批准门禁
+
+D-01 至 D-06 均已逐项确认。本文档仍保持 `Draft`，在用户完成一次整体审阅并明确批准前，不得进入 Harness 文件建设或目标代码实现。
+
+## 12. 批准记录
 
 | 版本 | 日期 | 状态 | 说明 |
 | --- | --- | --- | --- |
@@ -315,3 +427,4 @@ PMD、P3C、SpotBugs、JaCoCo 和 SonarQube 不进入首次闭环。首轮运行
 | v0.1-draft.4 | 2026-08-14 | Draft | 确认 D-03：冻结 8 模块拓扑、精确依赖矩阵和最小内容原则 |
 | v0.1-draft.5 | 2026-08-14 | Draft | 确认 D-04：冻结 `Money` 的归属、公开 API、精度、运算、异常和相等性契约 |
 | v0.1-draft.6 | 2026-08-14 | Draft | 确认 D-05：冻结自动化门禁、唯一验证命令、PASS 标准和禁止绕过规则 |
+| v0.1-draft.7 | 2026-08-14 | Draft | 确认 D-06：冻结运行状态、逐轮证据、验收场景和最终完成判定 |

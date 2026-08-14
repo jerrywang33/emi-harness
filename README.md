@@ -260,12 +260,19 @@ Agent 的完成声明不作为运行状态。Coordinator 必须将状态、交�
 
 ```text
 {target-project}/reports/runs/{run-id}/
-├── manifest.md                  # 目标、当前阶段、尝试轮次、交接和最终状态
-├── task-breakdown.md            # 当前任务、验收条件和完成证据
-├── executor-report.md            # Executor 变更摘要与自测结果
-├── verifier-report.md            # Verifier 逐项 PASS/FAIL 结论与复现方式
-└── quality/
-    └── verify.log                # 原始验证命令输出
+├── manifest.md                       # 目标、当前阶段、尝试轮次、交接和最终状态
+├── task-breakdown.md                 # 当前任务、验收条件和完成证据
+├── acceptance.md                     # 最终验收清单和用户结论
+├── retrospective.md                  # 首次运行暴露的真实缺口
+├── quality/
+│   ├── environment-preflight.log     # Java、Maven 和依赖解析预检
+│   └── effective-pom.xml             # 首次运行实际生效的 Maven 版本
+└── attempts/
+    └── 01/
+        ├── executor-report.md         # 本轮变更摘要、自测和交接 commit
+        ├── verifier-report.md         # 本轮独立 PASS/FAIL 结论与复现方式
+        └── quality/
+            └── verify.log             # 本轮原始验证命令输出
 ```
 
 ### 首次试跑
