@@ -83,46 +83,25 @@ Policies 与 Guardrails 约束 Agent 可以读取什么、调用什么以及哪�
 - **证据定义完成**：代码生成或 Agent 声明不代表交付完成，只有可复现的验证结果、完整的追溯关系和必要的人工确认才能结束任务。
 - **高风险判断归人负责**：监管解释、重大架构决策、例外处理和风险接受必须由具备权限的人员确认，Harness 负责提供上下文和证据，不代替责任主体。
 
-## 多 Agent 协作架构
+## Agent 角色与职责分离
 
-### 设计原则
+EMI Harness 定义必须被履行的职责，不固定 Agent 数量或协作拓扑。EMI Profile 根据任务范围和风险组合需要的 Agent、Skill、Tool 与人工检查；一个职责可以由 Agent 承担，也可以由确定性的 Workflow 或工具承担，但同一次交付中的执行与验证职责必须保持隔离。
 
-EMI 系统代码量大，业务与监管规则复杂，单一 Agent 执行容易导致上下文超载。EMI Harness 采用 **主 Agent + 多子 Agent** 分工协作：
+| 职责 | 责任边界 | 实现方式 |
+|------|----------|----------|
+| **Coordinator** | 管理目标、SDD、任务、运行状态、角色交接、失败回流和人工升级，不代替 Executor 实现代码或代替用户作出高风险决定。 | Coordinator Agent 或确定性 Workflow。 |
+| **Executor** | 根据已确认的任务和约束完成设计、代码、测试及自检，并提交可供独立验证的结果。 | 执行 Agent，可按任务拆分多个实例。 |
+| **Verifier** | 基于 SDD、完整变更和客观证据独立判断 PASS 或 FAIL，不采信 Executor 的完成声明。 | 独立 Agent 与确定性验证工具。 |
+| **Human Authority** | 确认监管解释、重大架构决策、例外处理、风险接受和最终验收，对相应决定承担责任。 | 具备授权的业务、合规、风险、架构或交付负责人。 |
 
-```mermaid
-flowchart TD
-    coordinator["主 Agent（Coordinator）\n规划任务、分配任务、检查结果"]
-    coordinator -->|派发| explore["Explore Agent\n扫描代码结构"]
-    coordinator -->|派发| executor["Executor Agent\n执行具体变更任务"]
-    coordinator -->|派发| tester["Test Agent\n编写 EMI 场景测试"]
-    coordinator -->|派发| verifier["Verifier Agent\n质量门禁验证"]
-    coordinator -->|派发| reviewer["Reviewer Agent\n功能与控制审查"]
-    coordinator -->|执行| retrospect["复盘 + 问题记录"]
+Explore、Test、Regulatory Review、Security Review、Architecture Review 和 Data Protection Review 等不是固定角色。它们根据任务需要表现为 Skill、Tool、独立 Agent 或人工检查，由 EMI Profile 在运行时组合。
 
-    explore -->|报告| coordinator
-    executor -->|报告| coordinator
-    tester -->|报告| coordinator
-    verifier -->|报告| coordinator
-    reviewer -->|报告| coordinator
-```
+### 上下文与权限边界
 
-### 职责分离
-
-| 角色 | 职责 | 加载的上下文 |
-|------|------|-------------|
-| **Coordinator（主 Agent）** | 规划任务、分配子 Agent、检查执行结果、组织复盘 | 项目导航 + SDD + 任务清单 |
-| **Explore Agent** | 扫描源码结构、提取领域模型 | 当前任务涉及的源码文件 |
-| **Executor Agent** | 执行具体变更任务 | 当前变更任务 + 对应约束 |
-| **Test Agent** | 编写 EMI 业务与合规场景测试 | SDD 验收标准 + 测试清单 + 被测代码 |
-| **Verifier Agent** | 运行质量门禁和约束检查 | 质量规则 + 约束规则 + 全量变更 |
-| **Reviewer Agent** | 检查功能、业务控制及重构前后的一致性 | SDD + 原有实现基线 + 变更后代码 |
-
-### 上下文管理
-
-- **每个子 Agent 执行完即释放上下文**，不累积无关历史。
-- **主 Agent 只保留 SDD、任务清单、项目导航和子 Agent 报告**，不加载全部源码。
-- **子 Agent 只加载当前任务涉及的文件和对应约束**，避免无关信息干扰执行。
-- **通过 SDD、任务清单、报告和执行日志传递信息**，不依赖 Agent 之间共享对话上下文。
+- 每个角色只获得履行当前职责所需的上下文、工具和操作权限。
+- 完整运行状态和证据持续保存，提供给角色的模型上下文则根据当前任务和职责按需投影。
+- Verifier 从 SDD、代码差异、验证规则和原始证据独立建立判断，不继承 Executor 的推理结论。
+- 角色之间通过持久化的任务状态、报告和证据交接，不依赖隐含的共享对话或口头完成声明。
 
 ## 8 模块架构
 
