@@ -205,6 +205,7 @@ EMI Assurance Bundle 是最后一个 EMI Bundle，但不是 DeepSeek Harness 的
 ```text
 emi-harness/
 ├── package.json
+├── pnpm-lock.yaml
 ├── pnpm-workspace.yaml
 ├── packages/
 │   ├── bundle/
@@ -222,7 +223,7 @@ emi-harness/
 └── README.md
 ```
 
-每个 Bundle 目录至少包含 `package.json`、`cordis.patch.yml`、实现代码和需要随包发布的资产。上图是目标结构；当前仓库中的 `specs/pilot`、`conventions`、`harness`、`scaffolds` 和 Codex Skill 是 v0.1 校准资产，在新的 DeepSeek Harness Profile 经过端到端验证前不追溯删除或改写。
+每个 Bundle 目录至少包含 `package.json`、`cordis.patch.yml`、实现代码、随包发布的文件和对应测试。上图是逐步建设的目标结构；只有开始实现一项真实能力时才创建相应目录，不用空包或占位文件制造已经完成的假象。
 
 ### 状态、证据与仓库边界
 
@@ -233,8 +234,6 @@ emi-harness/
 | **目标项目 Evidence Package** | SDD、Context Manifest、审批、任务计划、代码提交、验证结果、最终验收及对应 Session ID 和制品哈希。 | Harness 全局规则的私有副本或不受控的模型推理文本。 |
 
 DeepSeek Harness Session Log 保存模型可见输入、工具调用、上下文注入和运行轨迹，用于恢复、分叉与回放；目标项目 Evidence Package 保存可供交付、审计和复现的正式证据。二者通过 Run ID、Session ID 和制品哈希关联，但不互相冒充唯一事实来源。访问控制、脱敏和保留期限由 EMI Assurance Bundle 与部署环境共同执行。
-
-现有 Codex Skill 与 `install.sh` 后续作为可选集成适配器评估，不再作为 DeepSeek Harness 运行入口。
 
 ## 目标项目的技术栈与结构
 
@@ -279,8 +278,6 @@ EMI Harness 自身的运行技术栈与目标 EMI 应用的技术栈相互独立
 
 只有出现独立发布、独立部署、团队所有权、安全隔离或显著不同的扩缩容需求时，才将业务模块拆成 Maven 模块或独立服务。`client`、`common`、`test` 和 `start` 等技术模块按真实需要创建，不作为固定模板；其中 `common` 不得承载业务概念。
 
-原 8 模块 Maven 结构继续作为 `emi-pilot` 已批准的 v0.1 校准契约，不追溯修改；后续如证明仍有适用场景，可保留为可选的 `java-layered-multi-module` 项目结构，但不再代表 EMI Harness 的默认项目结构。
-
 ## 当前阶段
 
-本 README 描述 EMI Harness 的目标定位和架构，不表示其中全部能力已经实现。项目当前处于 v0.1 最小可运行闭环阶段；现有 8 模块 Java 17 `emi-pilot` 继续承担校准任务，目标 Profile 与 Bundles 只有在完成端到端验证后才会成为默认运行入口。阶段目标、实施进度和退出条件以 [`roadmap/README.md`](roadmap/README.md) 为准。
+本 README 描述 EMI Harness 的目标定位和架构，不表示其中全部能力已经实现。旧版文件式 Harness 已删除，项目当前从 DeepSeek Harness 的版本、Profile 和 Bundle 契约开始重新建设；只有完成端到端验证的能力才视为可用。阶段目标、实施进度和完成条件以 [`roadmap/README.md`](roadmap/README.md) 为准。

@@ -1,61 +1,38 @@
-# AGENTS - EMI Harness 入口
+# AGENTS - EMI Harness 仓库入口
 
-> EMI Harness 是面向欧洲 EMI 的金融级设计到交付智能研发引擎。本文件只负责导航；具体规则按角色和阶段加载。
+本仓库从 DeepSeek Harness 运行机制出发重新建设 EMI Harness。项目定位和目标架构以 [`README.md`](README.md) 为准，当前建设范围和进度以 [`roadmap/README.md`](roadmap/README.md) 为准。
 
-## 1. 当前能力
+## 当前状态
 
-v0.1 只支持 `new-module`：Coordinator、Executor、Verifier 完成规划、实现、独立验证、失败回流和人工验收。不得提前引入其他任务类型、监管知识库或自我进化机制。
+仓库处于重新建设阶段。README 中的 Bundle、Plugin、Profile、Workflow 和 Verification 是目标设计，不代表已经实现或可以运行。旧版文件式 Harness 已删除，不得继续引用原来的 `harness/`、`conventions/`、`specs/pilot/`、Codex Skill 或 `install.sh`。
 
-首次校准任务的唯一设计契约是 [`specs/pilot/system-design.md`](specs/pilot/system-design.md)。该文件必须为 `Approved`，否则不得实现。
+## 阅读顺序
 
-## 2. 路径与仓库边界
+1. 阅读 README，确认 EMI Harness 的八个部件及其边界。
+2. 阅读 Roadmap，确认当前步骤、交付物和完成条件。
+3. 阅读 [`docs/decisions/`](docs/decisions/) 中已接受的设计决定。
+4. 只读取当前任务涉及的 Bundle、Plugin、脚本和测试。
 
-按以下顺序解析 Harness 根目录：
+## 仓库边界
 
-1. 环境变量 `EMI_HARNESS_HOME`。
-2. `~/.emi-harness/path` 中记录的绝对路径。
-3. 当前文件所在的 Git 仓库根目录。
+- 本仓库保存 Bundles、Plugins、EMI 规则与业务资料、开发流程、检查规则、脚本、测试和设计文档。
+- 可启动的 EMI Profile 安装到 `$DSH_HOME/profiles/<name>`，不得把机器配置、凭据或未经脱敏的有效配置提交到仓库。
+- 目标项目的代码和正式交付记录保存在目标项目中，不复制到本仓库。
+- `demo/`、`.gstack/` 和本地环境文件只用于本机工作，不属于项目交付物。
 
-`emi-harness` 只保存规则、工作流、模板和全局运行索引。目标代码与完整运行证据必须保存在独立目标仓库；首次试跑目标固定为同级目录 `../emi-pilot`，且不配置 Git 远端。
+## 开发规则
 
-## 3. 规则优先级
+- Profile、Bundle、Plugin 和 patch 的含义必须与 DeepSeek Harness 官方机制一致，不自行创造同名概念。
+- 不为凑目录创建空 Bundle、空 Plugin 或占位实现。每个包必须有明确用途、输入、输出、配置、测试和使用方。
+- 先讨论并确认一个最小能力，再实现对应包；不要同时铺开四个 Bundle。
+- 能用 Schema、测试、脚本或 CI 判断的规则，不交给 Agent 自行判断。
+- Agent 进程之外必须保留独立的配置检查和验收条件，不能让 Harness 只靠自身声明安全或完成。
+- EMI 规则必须记录来源、版本、适用国家或地区、适用业务和确认状态；未确认的解释不得写成既定事实。
+- 禁止提交令牌、密码、私钥、客户数据、生产配置或其他敏感信息。
 
-发生冲突时按以下顺序处理：
+## 变更方式
 
-1. 用户在当前门禁中的明确决策。
-2. `Approved` SDD。
-3. `harness/guardrails/` 中的 MUST / MUST NOT。
-4. `conventions/`、`scaffolds/` 和模板。
-
-低优先级内容不得覆盖高优先级内容。无法消除的冲突必须停止并交给用户，不得自行解释后继续。
-
-## 4. 按角色加载
-
-| 角色或场景 | MUST 加载 | 禁止加载或行为 |
-| --- | --- | --- |
-| Coordinator 启动或恢复 | SDD、[`new-module.md`](harness/workflow/new-module.md)、[`execution-tracing.md`](harness/observability/execution-tracing.md)、[`agent-tools.md`](harness/tools/agent-tools.md)、两个模板 | 不写业务代码，不代替 Executor 或 Verifier 下结论 |
-| Executor 创建骨架 | SDD 第 5-9 节、两个 convention、四个 guardrail、[`module-structure.md`](scaffolds/module-structure.md)、`harness/feedback/` 配置 | 不读取 Verifier 未发布的工作，不改变 SDD、门禁或 attempt 历史 |
-| Executor 实现 `Money` | SDD 第 8-9 节、[`domain-modeling.md`](harness/guardrails/domain-modeling.md)、[`code-style.md`](harness/guardrails/code-style.md)、[`core-must-rules.md`](harness/guardrails/core-must-rules.md) | 不扩大业务范围，不加入未使用的依赖或占位代码 |
-| Verifier 独立验收 | SDD 第 6-10 节、[`code-quality.md`](harness/feedback/code-quality.md)、架构与领域 guardrail、执行追踪规范、待验证 commit | 初始结论形成前不读 Executor 完成声明；不修改代码或规则 |
-| Coordinator 处理 FAIL | Verifier 报告、原始日志、workflow 的回流规则、manifest | 不覆盖历史 attempt，不把失败包装为成功 |
-
-只加载当前角色所需文件，不一次性读取整个仓库。
-
-## 5. 三角色边界
-
-- **Coordinator**：维护 SDD 引用、任务、manifest、状态、交接和用户确认。
-- **Executor**：只在当前 attempt 内实现和自测，提交代码并形成 `executor-report.md`。
-- **Verifier**：使用全新上下文执行唯一正式验证命令，形成独立 PASS/FAIL 和原始证据。
-- 任一 Agent 的口头声明都不是证据；状态只以目标仓库中已提交的文件为准。
-- 同一次运行最多 3 个交付 attempt；第 3 次仍失败必须进入 `ESCALATED`。
-
-## 6. 安全与完整性
-
-- 禁止提交令牌、密码、私钥、Maven settings 或带凭据的仓库地址。
-- 禁止使用跳过测试、跳过 Checkstyle、忽略退出码、删除失败测试或降低规则等方式通过门禁。
-- 禁止修改已完成 attempt 的报告和日志；后续工作写入新 attempt。
-- 未经用户最终验收，运行最多只能进入 `AWAITING_FINAL_ACCEPTANCE`。
-
-## 7. 执行入口
-
-使用 `emi-harness` Skill 启动或恢复任务。Skill 解析路径后必须加载本文件，并将具体编排委托给 [`harness/workflow/new-module.md`](harness/workflow/new-module.md)。
+1. 架构或范围变化先更新 README、Roadmap 或设计决定。
+2. 每次只实现一个能够独立检查的最小改动。
+3. 运行与改动匹配的格式、Schema、单元、组合或端到端检查。
+4. 提交信息说明做了什么以及为什么；每个完整步骤单独提交并推送。

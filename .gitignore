@@ -12,3 +12,8 @@ demo/
 .vscode/
 *.iml
 .DS_Store
+
+# Node.js workspace output
+node_modules/
+dist/
+coverage/
