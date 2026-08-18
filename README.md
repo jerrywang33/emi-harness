@@ -236,9 +236,9 @@ DeepSeek Harness Session Log 保存模型可见输入、工具调用、上下文
 
 现有 Codex Skill 与 `install.sh` 后续作为可选集成适配器评估，不再作为 DeepSeek Harness 运行入口。
 
-## 技术栈与目标应用架构蓝图
+## 目标项目的技术栈与结构
 
-EMI Harness 自身的运行技术栈与目标 EMI 应用的技术栈相互独立。Harness Runtime 跟随 DeepSeek Harness 的兼容要求；目标应用根据业务形态、风险和现有环境选择版本化的 Application Blueprint（应用蓝图），不由 EMI Harness 强制采用同一种语言、框架或模块数量。本文中的 Profile 专指 DeepSeek Harness 的运行能力组合，Application Blueprint 专指交付给目标应用的工程基线。
+EMI Harness 自身的运行技术栈与目标 EMI 应用的技术栈相互独立。Harness Runtime 跟随 DeepSeek Harness 的兼容要求；目标项目根据业务形态、风险和现有环境选择技术栈与项目结构，不由 EMI Harness 强制采用同一种语言、框架或模块数量。本文中的 Profile 专指 DeepSeek Harness 的运行能力组合，不用于描述目标项目的技术栈和结构。
 
 ### 技术栈分层
 
@@ -246,12 +246,12 @@ EMI Harness 自身的运行技术栈与目标 EMI 应用的技术栈相互独立
 | --- | --- | --- |
 | **EMI Harness Runtime** | [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)、Node.js 24 LTS、TypeScript、pnpm | 与上游兼容要求保持一致，并锁定经过验证的 DeepSeek Harness 版本。 |
 | **EMI 领域资产** | Markdown、YAML、JSON Schema、Git | 优先采用可审查、可版本化和可比较的开放格式；检索索引不能代替权威源文件。 |
-| **Java 默认应用蓝图** | Java 25 LTS、Spring Boot 4.1.x、Maven 3.9.x 与 Maven Wrapper | 精确版本由应用蓝图锁定并通过受控变更升级，不在顶层规则中永久写死补丁版本。 |
+| **Java 项目默认技术栈** | Java 25 LTS、Spring Boot 4.1.x、Maven 3.9.x 与 Maven Wrapper | 精确版本在具体项目中锁定并通过受控变更升级，不在顶层规则中永久写死补丁版本。 |
 | **模块与测试** | Spring Modulith、ArchUnit、JUnit、Testcontainers | 先验证业务模块边界，再根据真实部署需求决定是否拆分物理模块或服务。 |
 | **数据与可观测性** | PostgreSQL 18、受控数据库迁移、OpenTelemetry | PostgreSQL 作为事务数据的默认候选；最终选择和数据拓扑由具体 SDD 决定。 |
 | **按需基础设施** | Kafka、Redis、搜索引擎及其他中间件 | 只有在 SDD 明确使用场景、失效策略和验收方式后才能引入。 |
 
-### 默认应用蓝图：`java-spring-modulith`
+### 默认 Java 项目结构：`java-spring-modulith`
 
 新建 Java EMI 应用默认先按业务能力形成模块化单体，而不是按技术层建立固定数量的 Maven 子模块。Account、Ledger、Payment、Safeguarding、Compliance 等是可能的业务模块，实际模块由当前系统的领域边界决定。
 
@@ -279,7 +279,7 @@ EMI Harness 自身的运行技术栈与目标 EMI 应用的技术栈相互独立
 
 只有出现独立发布、独立部署、团队所有权、安全隔离或显著不同的扩缩容需求时，才将业务模块拆成 Maven 模块或独立服务。`client`、`common`、`test` 和 `start` 等技术模块按真实需要创建，不作为固定模板；其中 `common` 不得承载业务概念。
 
-原 8 模块 Maven 结构继续作为 `emi-pilot` 已批准的 v0.1 校准契约，不追溯修改；后续如证明仍有适用场景，可沉淀为可选的 `java-layered-multi-module` 应用蓝图，但不再代表 EMI Harness 的默认应用架构。
+原 8 模块 Maven 结构继续作为 `emi-pilot` 已批准的 v0.1 校准契约，不追溯修改；后续如证明仍有适用场景，可保留为可选的 `java-layered-multi-module` 项目结构，但不再代表 EMI Harness 的默认项目结构。
 
 ## 当前阶段
 
