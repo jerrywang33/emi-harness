@@ -196,113 +196,70 @@ flowchart TD
 - 每次状态转换都追加记录输入、决定、执行者和证据引用；`close` 只封闭完整证据链，不在结束时补造过程记录。
 - `retrospect` 是可选的关闭后活动。它可以提出 Harness 改进建议，但不得自动修改规则、Profile 或 Skills；任何改进都作为独立变更重新进入本生命周期。
 
-## 框架结构
+## EMI Harness 实现结构
 
-第一阶段只建设一个可运行的最小闭环：支持一个 `new-module` 任务，由 Coordinator、Executor 和 Verifier 三个角色完成规划、执行、独立验证与失败回流。目录中的每个文件都必须被该闭环实际读取或生成；未进入首次运行链路的能力不提前建设。
+EMI Harness 源代码仓库负责开发和发布 Bundle、Plugin 与受治理的领域资产；可启动的 EMI Profile 安装在 `$DSH_HOME/profiles/<name>`，由 DeepSeek Harness 负责加载。Profile 回答“本次运行组合哪些 Bundle”，Bundle 回答“向运行时贡献哪些插件与配置”，两者不混为同一种包，并遵循 DeepSeek Harness 的[插件打包与安装约定](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/develop/basic/publish.zh.md)。
 
-### 最小运行闭环
+### Profile 与 Bundle 组合
 
-```mermaid
-flowchart LR
-    goal["用户目标"] --> plan["Coordinator\nSDD + 验收条件 + 任务"]
-    plan --> confirm["用户确认"]
-    confirm --> execute["Executor\n实现 + 自测"]
-    execute --> verify["Verifier\n独立验收 + 质量检查"]
-    verify -->|FAIL，最多 3 轮| execute
-    verify -->|PASS| accept["用户验收"]
-    accept --> archive["归档证据"]
+```text
+$DSH_HOME/profiles/emi/
+├── package.json          # dsh.profile：按顺序声明 Bundles
+├── cordis.patch.yml      # 部署或用户级覆盖层
+├── pnpm-workspace.yaml   # Profile 的依赖安装策略
+└── node_modules/         # 已锁定版本的树外 Bundles 与 Plugins
+
+dsh.profile.bundles
+├── @deepseek-ai/dsh-base
+├── EMI Domain Bundle
+├── EMI Delivery Bundle
+├── EMI Integration Bundle
+└── EMI Assurance Bundle
 ```
 
-- **Coordinator** 只管理目标、SDD、任务、运行状态和角色交接，不直接实现业务代码。
-- **Executor** 只获取当前任务、相关 SDD 和必要 Guardrail，完成代码与自测。
-- **Verifier** 使用全新上下文，基于 SDD 验收条件和客观命令独立判定，不依赖 Executor 的实现思路或完成声明。
-- 验证失败时，Verifier 必须输出失败项、证据和复现方式；Coordinator 将该报告交回 Executor。
-- 连续三轮仍未达到验收条件时停止自动执行，记录当前状态并升级给用户。
+| Bundle | 主要职责 |
+|--------|----------|
+| **EMI Domain Bundle** | 提供监管与业务 Context、适用性元数据、领域 Schema 和受控知识加载能力。 |
+| **EMI Delivery Bundle** | 提供 Skills、Workflows、Agent Presets、SDD 与任务模板，以及任务生命周期的执行能力。 |
+| **EMI Integration Bundle** | 提供 Git、CI、目标仓库、知识源、工单和审批系统等适配能力。 |
+| **EMI Assurance Bundle** | 提供 Policies、Guardrails、Verifiers、Evidence Schema 和人工门禁，并在 EMI Bundles 中最后应用。 |
 
-### 最小目录树
+Bundle 是带有 `dsh.bundle` manifest 和 `cordis.patch.yml` 的可分发 npm 包，可以同时携带自身所需的插件与领域资产。只有需要独立复用、版本管理或替换的能力才拆成单独 Plugin 包，避免把目录数量当成架构质量。
+
+受控运行必须锁定 DeepSeek Harness、Bundles 和 Plugins 的精确版本，限制未经评审的 Profile 或 Home 级覆盖，并保存 `dsh --profile emi --dump-config` 生成的有效配置及其完整性信息。配置可覆盖不等于可以绕过 EMI Policy。
+
+### 目标源代码结构
 
 ```text
 emi-harness/
-├── README.md
-├── AGENTS.md                       # Agent 导航入口和按需加载地图
-├── install.sh                      # 记录 Harness 路径并安装 Skill
-│
-├── roadmap/
-│   └── README.md                    # 阶段目标、实施计划和当前进度
-│
-├── specs/
-│   └── pilot/
-│       └── system-design.md          # 首次试跑的 SDD 与验收条件
-│
-├── conventions/
-│   ├── tech-stack.md                 # 首次试跑使用的已确认技术栈
-│   └── module-structure.md           # 8 模块职责与依赖方向
-│
-├── harness/
-│   ├── guardrails/
-│   │   ├── core-must-rules.md        # 首个闭环必须遵守的最小规则集
-│   │   ├── architecture.md           # 8 模块架构约束
-│   │   ├── domain-modeling.md        # Money 和领域对象约束
-│   │   └── code-style.md             # 首次试跑需要的代码规范
-│   ├── feedback/
-│   │   ├── code-quality.md           # 唯一验证命令、通过标准和失败处理
-│   │   ├── maven/                    # Maven 质量插件配置
-│   │   ├── checkstyle/               # 最小 Checkstyle 规则
-│   │   └── archunit/                 # 8 模块依赖测试模板
-│   ├── tools/
-│   │   └── agent-tools.md            # 创建 SDD、生成骨架、执行验证和记录证据
-│   ├── workflow/
-│   │   └── new-module.md             # 首个闭环的单一工作流
-│   └── observability/
-│       └── execution-tracing.md       # run-id、阶段、轮次、交接和结果记录
-│
-├── templates/
-│   ├── sdd-template.md                # 最小 SDD 模板
-│   └── task-breakdown-template.md     # 任务、验收条件和进度模板
-│
-├── scaffolds/
-│   └── module-structure.md            # 可编译的 8 模块 Maven 骨架
-│
-├── skills/
-│   └── emi-harness/
-│       ├── SKILL.md                   # 读取路径并启动 new-module Workflow
-│       └── agents/
-│           └── openai.yaml            # Codex Skill 展示与默认触发信息
-│
-└── reports/
-    └── index.md                       # 首次及后续执行的全局索引
+├── package.json
+├── pnpm-workspace.yaml
+├── packages/
+│   ├── bundle/
+│   │   ├── domain/       # Context、适用性与领域 Schema
+│   │   ├── delivery/     # Skills、Workflows、Presets 与模板
+│   │   ├── integration/  # Git、CI、知识源与审批适配
+│   │   └── assurance/    # Policies、Verifiers 与 Evidence Schema
+│   └── plugin/           # 需要独立发布或替换的共享能力
+├── scripts/              # Profile 安装、配置检查与发布脚本
+├── tests/                # Bundle 组合、Policy、Verifier 与端到端契约测试
+├── roadmap/              # 阶段目标和实施进度
+├── calibrations/         # 已批准的校准任务及其设计记录
+├── docs/                 # 架构、开发和运行文档
+├── AGENTS.md              # 仓库级 Agent 导航和贡献边界
+└── README.md
 ```
 
-### 运行状态与证据
+每个 Bundle 目录至少包含 `package.json`、`cordis.patch.yml`、实现代码和需要随包发布的资产。上图是目标结构；当前仓库中的 `specs/pilot`、`conventions`、`harness`、`scaffolds` 和 Codex Skill 是 v0.1 校准资产，在新的 DeepSeek Harness Profile 经过端到端验证前不追溯删除或改写。
 
-Agent 的完成声明不作为运行状态。Coordinator 必须将状态、交接和原始验证证据写入目标项目，使任务可以在新上下文中继续执行。
+### 状态、证据与仓库边界
 
-```text
-{target-project}/reports/runs/{run-id}/
-├── manifest.md                       # 目标、当前阶段、尝试轮次、交接和最终状态
-├── task-breakdown.md                 # 当前任务、验收条件和完成证据
-├── acceptance.md                     # 最终验收清单和用户结论
-├── retrospective.md                  # 首次运行暴露的真实缺口
-├── quality/
-│   ├── environment-preflight.log     # Java、Maven 和依赖解析预检
-│   ├── preflight-pom.xml             # 验证 Spring Boot Parent 可公开解析
-│   └── effective-pom.xml             # 首次运行实际生效的 Maven 版本
-└── attempts/
-    └── 01/
-        ├── executor-report.md         # 本轮变更摘要、自测和交接 commit
-        ├── verifier-report.md         # 本轮独立 PASS/FAIL 结论与复现方式
-        └── quality/
-            └── verify.log             # 本轮原始验证命令输出
-```
+| 位置 | 保存内容 | 不应保存的内容 |
+|------|----------|----------------|
+| **EMI Harness 源代码仓库** | Bundles、Plugins、Context、Skills、Policies、Verifiers、模板和测试。 | 具体目标项目的完整运行记录、生产凭据或客户数据。 |
+| **`$DSH_HOME` 与 Session Storage** | 已安装 Profile、机器级配置、凭据引用和 DeepSeek Harness 的仅追加 Session Log。 | 未经治理的 EMI 权威知识副本或目标项目的正式交付结论。 |
+| **目标项目 Evidence Package** | SDD、Context Manifest、审批、任务计划、代码提交、验证结果、最终验收及对应 Session ID 和制品哈希。 | Harness 全局规则的私有副本或不受控的模型推理文本。 |
 
-### TDD
+DeepSeek Harness Session Log 保存模型可见输入、工具调用、上下文注入和运行轨迹，用于恢复、分叉与回放；目标项目 Evidence Package 保存可供交付、审计和复现的正式证据。二者通过 Run ID、Session ID 和制品哈希关联，但不互相冒充唯一事实来源。访问控制、脱敏和保留期限由 EMI Assurance Bundle 与部署环境共同执行。
 
-首个目标是创建一个最小 8 模块 Java 17 Maven 工程，并实现不可变 `Money` 值对象及单元测试。本次运行只有在以下条件全部满足时才能完成：
-
-- 8 个 Maven 模块可由根工程统一编译。
-- `Money` 的不可变性、同币种运算和异币种拒绝具有单元测试。
-- `mvn verify` 返回成功，Checkstyle 和 ArchUnit 检查通过。
-- `manifest.md`、Verifier 报告和原始验证日志完整，且可以相互追溯。
-- 用户完成最终验收。
-
-在这个闭环实际跑通前，不增加 `new-feature`、`refactor`、分层 Skill、监管知识目录、PRD 生成、外部接入或 Harness 自我进化机制。首次运行暴露的真实缺口，作为后续目录和能力扩展的依据。
+`emi-pilot` 的 8 模块 Java 17 Maven 任务继续以现有 SDD、Roadmap 和证据目录作为 v0.1 校准契约，不属于 EMI Harness 的默认实现结构。Codex Skill 与 `install.sh` 后续作为可选集成适配器评估，不再作为 DeepSeek Harness 运行入口。

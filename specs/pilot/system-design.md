@@ -23,7 +23,7 @@
 
 - 仅支持一个 `new-module` 工作流。
 - 由 Coordinator、Executor 和 Verifier 三个角色完成规划、实现、独立验证和失败回流。
-- 生成一个包含 8 个模块的 Java 17 Maven 工程，模块职责和依赖方向遵循根目录 [README](../../README.md#8-模块架构)。
+- 生成一个包含 8 个模块的 Java 17 Maven 工程，模块职责和依赖方向遵循 [`module-structure.md`](../../conventions/module-structure.md)。
 - 实现不可变 `Money` 值对象，并覆盖不可变性、同币种运算和异币种拒绝测试。
 - 使用 `mvn verify`、Checkstyle、ArchUnit 和单元测试形成客观验证结论。
 - Verifier 判定失败时必须提供失败项、原始证据和复现方式，最多回流三轮。

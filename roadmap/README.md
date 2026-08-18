@@ -49,7 +49,7 @@
 
 v0.1 只有在以下条件全部满足后才能结束：
 
-- 首次试跑达到根目录 [README](../README.md#tdd) 定义的全部验收条件。
+- 首次试跑达到 [`system-design.md`](../specs/pilot/system-design.md#107-完成判定) 定义的全部验收条件。
 - 新 Agent 可以在没有历史对话的情况下，从 Harness 入口完成同一闭环。
 - Coordinator、Executor 和 Verifier 的状态与交接均已落盘，不依赖口头完成声明。
 - 验证失败能够按既定路径回流，重试达到上限后能够停止并升级给用户。
