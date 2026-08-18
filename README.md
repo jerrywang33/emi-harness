@@ -148,45 +148,53 @@ EMI Harness 自身的运行技术栈与目标 EMI 应用的技术栈相互独立
 
 原 8 模块 Maven 结构继续作为 `emi-pilot` 已批准的 v0.1 校准契约，不追溯修改；后续如证明仍有适用场景，可沉淀为可选的 `java-layered-multi-module` Profile，但不再代表 EMI Harness 的默认应用架构。
 
-## 核心工作流
+## 任务生命周期与状态机
+
+每项任务都通过一组可持久化、可恢复的状态推进。状态表示已经形成的事实和证据，而不是某个 Agent 的对话阶段；Coordinator Agent 或确定性 Workflow 均可驱动状态转换，但不能绕过进入下一状态所需的门禁。
 
 ```mermaid
-flowchart LR
-    propose["1. propose\n提出变更\nWHY"]
-    specify["2. specify\n编写 SDD\nWHAT"]
-    design["3. design\n技术方案\nHOW"]
-    tasks["4. tasks\n任务分解\n分配子 Agent"]
-    implement["5. implement\n执行变更\n编译和单测"]
-    verify["6. verify\n测试、门禁\n约束检查"]
-    retrospect["7. retrospect\n复盘\n问题记录"]
-    archive["8. archive\n归档交付证据"]
-
-    propose --> specify --> design --> tasks --> implement --> verify --> retrospect --> archive
+flowchart TD
+    intake["intake<br/>接收目标"] --> contextualize["contextualize<br/>确定适用上下文"]
+    contextualize --> specify["specify<br/>形成 SDD"]
+    specify --> approve["approve<br/>人工确认"]
+    approve -->|批准| plan["plan<br/>分解任务并组合能力"]
+    approve -->|要求修订| specify
+    plan --> execute["execute<br/>执行变更与自检"]
+    execute --> verify["verify<br/>独立验证"]
+    verify -->|实现问题| execute
+    verify -->|上下文或规格缺口| contextualize
+    verify -->|无法判断或高风险| human["Human Authority<br/>人工判断"]
+    human -->|确认后继续| verify
+    human -->|补充或修订| contextualize
+    human -->|停止自动执行| blocked["blocked<br/>等待外部处理"]
+    verify -->|超过重试上限| blocked
+    verify -->|PASS| accept["accept<br/>用户验收"]
+    accept -->|通过| close["close<br/>关闭任务"]
+    accept -->|范围内修复| execute
+    accept -->|范围发生变化| specify
 ```
 
-| 步骤 | 执行者 | 输入 | 输出 |
-|------|--------|------|------|
-| **propose** | 用户 / Coordinator | 业务需求、监管要求、内部政策、审计发现或生产问题 | 说明变更原因、目标和初步范围的变更提案 |
-| **specify** | Coordinator | 变更提案 + 规格模板 | 明确范围、业务规则、适用约束和验收标准的 SDD |
-| **design** | Coordinator | 已确认的 SDD | 写入 SDD 的领域模型、接口、数据、异常处理和技术方案 |
-| **tasks** | Coordinator | SDD + 技术方案 | 范围明确、可独立验证的任务清单及子 Agent 分工 |
-| **implement** | Executor Agent | 单个变更任务 + 对应约束 | 代码变更、编译结果和相关单元测试结果 |
-| **verify** | Verifier Agent + Test Agent | 全量变更 + SDD 验收标准 + 约束规则 | `mvn verify`、架构与反模式检查、EMI 场景测试及验证报告 |
-| **retrospect** | Coordinator，用户确认 | 执行日志 + 验证报告 | 规格、规则、测试和执行过程的复盘报告及问题记录 |
-| **archive** | Coordinator | SDD + 任务记录 + 交付证据 + 复盘报告 | 归档到业务项目的完整交付记录 |
+| 状态 | 主要责任 | 进入下一状态前必须形成的输出 |
+|------|----------|------------------------------|
+| **`intake`** | 用户 / Coordinator | 用户目标、初步范围、期望结果和初始风险等级。 |
+| **`contextualize`** | Coordinator，按需调用领域能力 | 适用司法辖区、业务场景、权威来源、规则版本及待确认事项。 |
+| **`specify`** | Coordinator | 包含范围、业务规则、技术设计、控制要求和验收标准的 SDD。 |
+| **`approve`** | Human Authority | 对范围、高风险事项和验收标准作出的批准、附条件批准或退回结论。 |
+| **`plan`** | Coordinator / Workflow | 可独立验证的任务清单，以及本次运行选用的 Profile、Skills、Tools、Policies 和职责分配。 |
+| **`execute`** | Executor | 代码、配置、测试变更及 Profile 要求的自检证据。 |
+| **`verify`** | Verifier 与 Profile 定义的验证工具 | 可复现的验证结果、原始证据及独立 PASS 或 FAIL 结论。 |
+| **`accept`** | 用户 / Human Authority | 最终接受、范围内返工或范围变更结论。 |
+| **`close`** | Coordinator / Workflow | 最终状态、完整追溯关系、交付证据和必要的后续事项。 |
 
-### 关键门禁
+### 回流与终止规则
 
-| 门禁 | 阶段 | 未通过处理 |
-|------|------|-----------|
-| 需求与验收标准确认 | specify / design | 未确认的问题记录在 SDD 中，不进入实现 |
-| `mvn compile` + 相关单元测试 | 每个 implement 任务完成后 | 返回 Executor 修复并重新执行 |
-| `mvn verify` | verify | 修复后重新验证；超过重试次数则升级给人 |
-| 架构、反模式和关键约束检查 | verify | 必须消除本次变更新增的 MUST 违规 |
-| EMI 业务与合规场景测试 | verify | 修复实现或补充规格后重新验证 |
-| 最终交付确认 | archive 前 | 所有要求的检查和人工审查通过后才能归档交付 |
-
-交付证据保存在对应业务项目中。复盘只记录本次执行中发现的问题，不自动生成或应用 Harness 改进；确需调整 Harness 时，作为普通变更单独提出并经过人工评审。
+- 实现与自检问题返回 `execute`；上下文、监管解释或 SDD 缺口返回 `contextualize` 或 `specify`，并重新经过必要审批。
+- 无法确定的语义判断、高风险决定和例外处理必须升级给 Human Authority，不允许 Agent 通过重试自行形成事实。
+- 自动重试达到 Profile 规定的上限后进入 `blocked`，保存当前状态、失败证据和恢复条件并停止自动执行。
+- `blocked` 只能在外部条件满足且 Human Authority 记录恢复依据和目标状态后恢复；用户终止任务时必须以明确的终止状态关闭并保留已有证据。
+- 用户要求的范围内修复可以返回 `execute`；目标、范围或验收标准变化必须返回 `specify` 并重新批准。
+- 每次状态转换都追加记录输入、决定、执行者和证据引用；`close` 只封闭完整证据链，不在结束时补造过程记录。
+- `retrospect` 是可选的关闭后活动。它可以提出 Harness 改进建议，但不得自动修改规则、Profile 或 Skills；任何改进都作为独立变更重新进入本生命周期。
 
 ## 框架结构
 
