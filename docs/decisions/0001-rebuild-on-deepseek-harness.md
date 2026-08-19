@@ -1,6 +1,6 @@
 # 0001：基于 DeepSeek Harness 重新建设
 
-- 状态：已接受
+- 状态：已被 [0002：以 Pi Runtime 为执行内核，自建 EMI 控制面](0002-adopt-pi-runtime-with-emi-control-plane.md) 取代
 - 日期：2026-08-18
 
 ## 背景

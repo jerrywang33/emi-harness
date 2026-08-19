@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "EMI design-to-delivery harness built on DeepSeek Harness",
+  "description": "EMI design-to-delivery harness powered by Pi Runtime",
   "packageManager": "pnpm@11.7.0",
   "engines": {
-    "node": "^22.19.0 || >=24.0.0"
+    "node": ">=22.19.0"
   },
   "scripts": {
     "check": "node scripts/check-workspace.mjs && pnpm -r --if-present run check"

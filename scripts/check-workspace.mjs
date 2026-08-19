@@ -24,6 +24,7 @@ for (const path of [
   "AGENTS.md",
   "README.md",
   "docs/decisions/0001-rebuild-on-deepseek-harness.md",
+  "docs/decisions/0002-adopt-pi-runtime-with-emi-control-plane.md",
   "package.json",
   "pnpm-lock.yaml",
   "pnpm-workspace.yaml",
@@ -36,15 +37,13 @@ const rootPackage = JSON.parse(await readFile(join(root, "package.json"), "utf8"
 if (rootPackage.packageManager !== "pnpm@11.7.0") {
   errors.push("package.json must pin pnpm@11.7.0");
 }
-if (rootPackage.engines?.node !== "^22.19.0 || >=24.0.0") {
-  errors.push("package.json must use the DeepSeek Harness Node.js compatibility range");
+if (rootPackage.engines?.node !== ">=22.19.0") {
+  errors.push("package.json must use the Pi Node.js compatibility range");
 }
 
 const workspace = await readFile(join(root, "pnpm-workspace.yaml"), "utf8");
-for (const pattern of ["packages/bundle/*", "packages/plugin/*"]) {
-  if (!workspace.includes(pattern)) {
-    errors.push(`pnpm-workspace.yaml must include ${pattern}`);
-  }
+if (!workspace.includes('"packages/*"')) {
+  errors.push('pnpm-workspace.yaml must include "packages/*"');
 }
 
 for (const legacyPath of [
@@ -61,21 +60,19 @@ for (const legacyPath of [
   }
 }
 
-for (const [group, isBundle] of [
-  ["packages/bundle", true],
-  ["packages/plugin", false],
-]) {
-  const groupPath = join(root, group);
-  if (!(await exists(groupPath))) {
-    continue;
-  }
-
-  const entries = await readdir(groupPath, { withFileTypes: true });
+const packagesPath = join(root, "packages");
+if (await exists(packagesPath)) {
+  const entries = await readdir(packagesPath, { withFileTypes: true });
   for (const entry of entries.filter((item) => item.isDirectory())) {
-    const packagePath = join(groupPath, entry.name);
-    await requirePath(join(packagePath, "package.json"));
-    if (isBundle) {
-      await requirePath(join(packagePath, "cordis.patch.yml"));
+    await requirePath(join(packagesPath, entry.name, "package.json"));
+  }
+}
+
+for (const path of ["AGENTS.md", "README.md", "roadmap/README.md", "package.json", "pnpm-workspace.yaml"]) {
+  const content = await readFile(join(root, path), "utf8");
+  for (const staleTerm of ["$DSH_HOME", "dsh.profile", "packages/bundle", "packages/plugin"]) {
+    if (content.includes(staleTerm)) {
+      errors.push(`${path} contains superseded DeepSeek Harness implementation term: ${staleTerm}`);
     }
   }
 }

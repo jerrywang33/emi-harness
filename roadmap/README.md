@@ -6,7 +6,7 @@
 
 | 阶段 | 状态 | 目标 |
 | --- | --- | --- |
-| v0.1 DeepSeek Harness 最小闭环 | 进行中 | 让一个小型 EMI 研发任务通过 EMI Profile 和最小 Bundles 完成规格、执行、独立检查、人工验收和交付记录保存 |
+| v0.1 Pi Runtime 与 EMI Control Plane 最小闭环 | 进行中 | 让一个小型 EMI 研发任务通过受控 Pi Runtime、持久化任务状态和外部工具边界，完成规格、执行、独立检查、人工验收和证据保存 |
 
 当前阶段不建设完整 EMI 业务系统，也不一次性建设完整监管知识库。先证明运行方式和各部件边界正确，再扩充内容。
 
@@ -14,25 +14,26 @@
 
 | 步骤 | 工作内容 | 主要结果 | 状态 |
 | --- | --- | --- | --- |
-| 1 | 删除旧版文件式 Harness，建立新的仓库与 pnpm 工作区 | 干净的仓库入口、工作区配置、建设规则和本 Roadmap | 已完成 |
-| 2 | 验证 DeepSeek Harness 的版本、安装方式、Profile 和 Bundle 契约 | 锁定版本、最小可启动 Profile、配置检查结果 | 待开始 |
-| 3 | 实现最小 EMI Domain Bundle | 一条带来源、版本和适用范围的 EMI Context，以及读取和校验方式 | 待开始 |
-| 4 | 实现最小 EMI Delivery Bundle | 一个从目标到 SDD、任务拆分和执行的 Workflow | 待开始 |
-| 5 | 实现最小 EMI Assurance Bundle | 一组不能由 Executor 自行宣布通过的检查、人工批准点和交付记录格式 | 待开始 |
-| 6 | 实现最小 EMI Integration Bundle | 本地 Git 与目标项目接入，不引入非必要的外部系统 | 待开始 |
-| 7 | 组合 EMI Profile 并执行完整验证任务 | 可重复运行的设计到交付过程、失败回流和完整交付记录 | 待开始 |
+| 1 | 完成运行时选型，建立 Pi Runtime 与 EMI Control Plane 边界 | ADR 0002、一致的 README、Roadmap、仓库规则和 pnpm 工作区 | 已完成 |
+| 2 | 验证并锁定 Pi SDK 的受控嵌入契约 | 精确 Pi 版本、最小 `PiRuntimePort`、受控 ResourceLoader、精确工具白名单和事件转换验证 | 待开始 |
+| 3 | 实现最小持久化任务状态与运行清单 | 可恢复的任务状态、角色运行记录、人工门禁和版本化运行清单 | 待开始 |
+| 4 | 实现最小 Controlled EMI Resources | 一条带权威来源、版本、适用范围、状态和哈希的 EMI Context，一个受控 Skill，以及读取和校验方式 | 待开始 |
+| 5 | 实现最小 Tool Gateway 与隔离执行边界 | 一个带权限决策、操作意图、幂等键、执行结果和中断后对账的可测试工具调用 | 待开始 |
+| 6 | 实现 Executor、Verifier 与最小验证证据 | 独立 Pi Sessions、失败回流、人工批准点，以及不能由 Executor 自行宣布通过的检查 | 待开始 |
+| 7 | 接入本地 Git 目标项目并执行完整任务 | 可重复运行的设计到交付过程、失败恢复和完整 Evidence Package | 待开始 |
 | 8 | 用户验收并决定 v0.2 | 验收结论、实际问题和下一阶段范围 | 待开始 |
 
-下一步只执行第 2 步。在 Profile 和 Bundle 契约得到实际验证前，不创建四个 Bundle 的空目录或占位包。
+下一步只执行第 2 步。在 Pi SDK 的 ResourceLoader、工具白名单、Session 事件和中断行为得到实际验证前，不同时创建其他目标包或占位实现。
 
 ## v0.1 完成条件
 
-- 从干净环境可以安装锁定版本的 DeepSeek Harness 和 EMI Profile。
-- Profile 能按确定顺序加载本阶段实现的 Bundles，并能检查合并后的实际配置。
+- 从干净环境可以安装精确锁定的 Pi 版本并通过 `PiRuntimePort` 启动角色 Session。
+- 受控 ResourceLoader 只加载运行清单声明的资源，项目或用户的默认 Pi 资源无法进入受控运行。
+- Agent 只能看到精确工具白名单，任何有副作用的操作都经过 Tool Gateway 和隔离执行边界。
 - 同一个验证任务可以从目标和 EMI Context 形成 SDD，经人工批准后执行。
-- Executor 与 Verifier 分开，失败能够回到正确步骤，超过限制后停止自动执行。
+- Executor 与 Verifier 使用独立 Session 和权限，失败能够回到正确步骤，超过限制后停止自动执行。
 - 目标、规则来源、SDD、代码变更、检查结果和人工验收能够互相对应。
-- 运行中断后可以从已保存状态继续，不依赖原有聊天记录。
+- 运行中断后可以从 EMI 自有任务状态恢复，并能识别需要对账的未知工具结果，不依赖原有聊天记录。
 - 用户完成最终验收。
 
 ## 本阶段不做
@@ -40,6 +41,7 @@
 - 不迁移或兼容旧版文件路径、Workflow、Skill 和 8 模块 Java 验证项目。
 - 不建设 Harness 自动修改自身规则的进化机制。
 - 不接入生产数据、生产凭据或客户信息。
+- 不 fork Pi，不依赖 Pi 尚未完成的新 `AgentHarness`，不把 Pi Session 当成 EMI 任务或证据账本。
 - 不提前引入 Kafka、Redis、搜索引擎、工单系统等非必要组件。
 - 不同时支持多套运行时或多种目标应用技术栈。
 
