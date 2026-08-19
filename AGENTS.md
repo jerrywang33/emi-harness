@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-仓库处于重新建设阶段。README 中的 Control Plane、Pi Runtime Adapter、Resource Registry、Tool Gateway、Assurance 和 Integration 是目标设计，不代表已经实现或可以运行。旧版文件式 Harness 已删除，不得继续引用原来的 `harness/`、`conventions/`、`specs/pilot/`、Codex Skill 或 `install.sh`。
+仓库处于重新建设阶段。`runtime-pi` 已完成 Roadmap 第 2 步的最小受控嵌入契约和无网络测试；它只是可独立检查的运行时适配包，不是可交付的完整 Harness。README 中的 Control Plane、Resource Registry、Tool Gateway、Assurance 和 Integration 仍是目标设计，不代表已经实现或可以运行。旧版文件式 Harness 已删除，不得继续引用原来的 `harness/`、`conventions/`、`specs/pilot/`、Codex Skill 或 `install.sh`。
 
 ## 阅读顺序
 

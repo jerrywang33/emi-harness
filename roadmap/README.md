@@ -15,7 +15,7 @@
 | 步骤 | 工作内容 | 主要结果 | 状态 |
 | --- | --- | --- | --- |
 | 1 | 完成运行时选型，建立 Pi Runtime 与 EMI Control Plane 边界 | ADR 0002、一致的 README、Roadmap、仓库规则和 pnpm 工作区 | 已完成 |
-| 2 | 验证并锁定 Pi SDK 的受控嵌入契约 | 精确 Pi 版本、最小 `PiRuntimePort`、受控 ResourceLoader、精确工具白名单和事件转换验证 | 待开始 |
+| 2 | 验证并锁定 Pi SDK 的受控嵌入契约 | 精确 Pi 版本、最小 `PiRuntimePort`、受控 ResourceLoader、精确工具白名单和事件转换验证 | 已完成 |
 | 3 | 实现最小持久化任务状态与运行清单 | 可恢复的任务状态、角色运行记录、人工门禁和版本化运行清单 | 待开始 |
 | 4 | 实现最小 Controlled EMI Resources | 一条带权威来源、版本、适用范围、状态和哈希的 EMI Context，一个受控 Skill，以及读取和校验方式 | 待开始 |
 | 5 | 实现最小 Tool Gateway 与隔离执行边界 | 一个带权限决策、操作意图、幂等键、执行结果和中断后对账的可测试工具调用 | 待开始 |
@@ -23,7 +23,19 @@
 | 7 | 接入本地 TypeScript 目标项目并执行完整任务 | 可重复运行的设计到交付过程、失败恢复和完整 Evidence Package | 待开始 |
 | 8 | 用户验收并决定 v0.2 | 验收结论、实际问题和下一阶段范围 | 待开始 |
 
-下一步只执行第 2 步。在 Pi SDK 的 ResourceLoader、工具白名单、Session 事件和中断行为得到实际验证前，不同时创建其他目标包或占位实现。
+下一步只执行第 3 步，先定义最小任务状态、运行清单和持久化边界，再实现对应包；不同时创建其他目标包或占位实现。
+
+### 第 2 步实际结果
+
+- 新增 `@emi-harness/runtime-pi`，只通过自有 `PiRuntimePort`、请求、Session、Tool 和 Event 类型向外提供能力，构建检查会阻止公共声明暴露 Pi 类型。
+- 精确锁定 `@earendil-works/pi-ai`、`pi-agent-core` 和 `pi-coding-agent` `0.84.2`，对应走读 commit 为 `59a71b235dadb4ad0d67557a8abb0aaa093e68b4`；工作区脚本会检查锁版和“只有 `runtime-pi` 可以直接依赖 Pi”的边界。
+- 自建 ResourceLoader 只返回运行请求传入的系统提示、追加提示和上下文文件，拒绝运行中扩展资源；契约测试证明目标目录中的 `AGENTS.md` 不会被默认发现。
+- 模型目录只使用锁定 Pi 包内置版本并关闭目录网络刷新，不读取环境中的 `models.json`、`auth.json` 或环境变量凭据；调用方必须通过自有解析器显式提供所选 Provider 的 API Key。
+- 每个 Session 始终传入精确工具列表，包括空列表；Pi 内置文件和 Shell 工具被适配器拒绝，Session 创建后再次核对实际启用工具。
+- Pi 事件被转换为带 Run ID、Role Run ID、角色和 Session ID 的 EMI 事件；结束结果区分完成、中断、错误、不完整和未知。异步事件监听按顺序完成，监听失败不会打断 Pi，但会使本次 `run()` 在 Pi settled 后失败。
+- 无网络 Faux Provider 契约测试已实际执行正常工具调用和活动请求中断，确认中断结果先产生 `agent.ended(outcome=aborted)`，随后产生 `agent.settled`。
+
+本步只证明 Pi 的受控嵌入边界。当前 Session、Settings 和测试凭据均不承担 EMI 权威状态；持久化任务状态、运行清单、审批和恢复属于第 3 步。
 
 ## v0.1 完成条件
 

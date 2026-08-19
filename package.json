@@ -10,5 +10,10 @@
   },
   "scripts": {
     "check": "node scripts/check-workspace.mjs && pnpm -r --if-present run check"
+  },
+  "devDependencies": {
+    "@types/node": "24.12.4",
+    "typescript": "5.9.3",
+    "vitest": "4.1.9"
   }
 }

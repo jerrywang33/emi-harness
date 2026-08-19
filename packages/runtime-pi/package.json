@@ -1,0 +1,25 @@
+{
+  "name": "@emi-harness/runtime-pi",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Controlled Pi Runtime adapter for EMI Harness",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "check:public-api": "node scripts/check-public-api.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "check": "pnpm run typecheck && pnpm run test && pnpm run build && pnpm run check:public-api"
+  },
+  "dependencies": {
+    "@earendil-works/pi-agent-core": "0.84.2",
+    "@earendil-works/pi-ai": "0.84.2",
+    "@earendil-works/pi-coding-agent": "0.84.2"
+  }
+}

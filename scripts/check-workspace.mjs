@@ -29,6 +29,7 @@ for (const path of [
   "pnpm-lock.yaml",
   "pnpm-workspace.yaml",
   "roadmap/README.md",
+  "tsconfig.base.json",
 ]) {
   await requirePath(join(root, path));
 }
@@ -44,6 +45,11 @@ if (rootPackage.engines?.node !== ">=22.19.0") {
 const workspace = await readFile(join(root, "pnpm-workspace.yaml"), "utf8");
 if (!workspace.includes('"packages/*"')) {
   errors.push('pnpm-workspace.yaml must include "packages/*"');
+}
+for (const deniedBuild of ["'@google/genai': false", "protobufjs: false"]) {
+  if (!workspace.includes(deniedBuild)) {
+    errors.push(`pnpm-workspace.yaml must explicitly deny dependency build scripts with: ${deniedBuild}`);
+  }
 }
 
 for (const legacyPath of [
@@ -64,7 +70,46 @@ const packagesPath = join(root, "packages");
 if (await exists(packagesPath)) {
   const entries = await readdir(packagesPath, { withFileTypes: true });
   for (const entry of entries.filter((item) => item.isDirectory())) {
-    await requirePath(join(packagesPath, entry.name, "package.json"));
+    const packagePath = join(packagesPath, entry.name, "package.json");
+    await requirePath(packagePath);
+    if (!(await exists(packagePath))) {
+      continue;
+    }
+
+    const packageManifest = JSON.parse(await readFile(packagePath, "utf8"));
+    if (packageManifest.name !== "@emi-harness/runtime-pi") {
+      for (const dependencyGroup of ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"]) {
+        for (const dependency of Object.keys(packageManifest[dependencyGroup] ?? {})) {
+          if (dependency.startsWith("@earendil-works/pi-")) {
+            errors.push(`${relative(root, packagePath)} must not depend directly on Pi package: ${dependency}`);
+          }
+        }
+      }
+    }
+  }
+}
+
+const runtimePiRoot = join(root, "packages/runtime-pi");
+for (const path of [
+  "README.md",
+  "package.json",
+  "src/index.ts",
+  "test/pi-sdk.contract.test.ts",
+  "tsconfig.build.json",
+  "tsconfig.json",
+]) {
+  await requirePath(join(runtimePiRoot, path));
+}
+if (await exists(join(runtimePiRoot, "package.json"))) {
+  const runtimePiPackage = JSON.parse(await readFile(join(runtimePiRoot, "package.json"), "utf8"));
+  for (const piPackage of [
+    "@earendil-works/pi-agent-core",
+    "@earendil-works/pi-ai",
+    "@earendil-works/pi-coding-agent",
+  ]) {
+    if (runtimePiPackage.dependencies?.[piPackage] !== "0.84.2") {
+      errors.push(`packages/runtime-pi/package.json must pin ${piPackage} to 0.84.2`);
+    }
   }
 }
 
