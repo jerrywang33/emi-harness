@@ -69,6 +69,138 @@ v0.1 的并发边界如下：
 - Executor 与 Verifier 不得同时执行，也不得共享 RoleRun 或 Pi Session。
 - 后续需要并行 Executor 时，必须由新版本 RunManifest 明确声明，不能由 Agent 临时扩展。
 
+## 已确认的 Run 与 RoleRun 状态
+
+Run 和 RoleRun 都将当前流程状态与最终结果分开保存，避免把“正在处理什么”和“最后为什么结束”混在一起。
+
+```ts
+type RunStatus =
+  | "awaiting_authorization"
+  | "authorized"
+  | "active"
+  | "stopping"
+  | "blocked"
+  | "settled";
+
+type RunOutcome =
+  | "completed"
+  | "cancelled"
+  | "superseded"
+  | "rejected"
+  | "failed";
+```
+
+| Run 状态 | 含义 |
+| --- | --- |
+| **`awaiting_authorization`** | Manifest 已封存，正在等待 Run Authorization。 |
+| **`authorized`** | 已获授权并进入 `executing`，尚未启动第一个 RoleRun。 |
+| **`active`** | 至少一个 RoleRun 已经开始，Run 仍允许继续。 |
+| **`stopping`** | 已要求中止，正在终止 Agent 并对账外部操作。 |
+| **`blocked`** | 存在未知结果或外部条件，禁止继续自动执行。 |
+| **`settled`** | Run 已不可继续，并且必须具有 RunOutcome。 |
+
+Run 只有在用户最终验收后才能以 `completed` 结算。Verifier PASS 时 Task 进入 `awaiting_acceptance`，Run 仍保持 `active`，以便用户提出获准范围内的返工。
+
+```ts
+type RoleRunStatus =
+  | "prepared"
+  | "starting"
+  | "running"
+  | "settling"
+  | "blocked"
+  | "settled";
+
+type RoleRunOutcome =
+  | "succeeded"
+  | "failed"
+  | "aborted"
+  | "interrupted";
+```
+
+| RoleRun 状态 | 含义 |
+| --- | --- |
+| **`prepared`** | RoleRun 已持久化，输入制品和 RolePlan 已锁定。 |
+| **`starting`** | Worker 已取得租约，正在创建 Pi Session。 |
+| **`running`** | Session ID 已持久化，可以向 Pi 提交 Prompt。 |
+| **`settling`** | Pi 已结束，正在封存输出并对账工具操作。 |
+| **`blocked`** | 存在未知工具结果或无法自动确认的执行事实。 |
+| **`settled`** | RoleRun 已结束，所有外部操作结果均已确定。 |
+
+`unknown` 不作为 Run 或 RoleRun 终态。只要存在未知副作用，RoleRun 和 Run 必须保持 `blocked`，不能把未知结果标记为失败后自动重试。
+
+RoleRun 至少保存以下字段：
+
+```ts
+type RoleRun = {
+  roleRunId: string;
+  runId: string;
+  rolePlanId: string;
+  role: "coordinator" | "executor" | "verifier";
+  attempt: number;
+  version: number;
+
+  status: RoleRunStatus;
+  outcome?: RoleRunOutcome;
+  runtimeOutcome?:
+    | "completed"
+    | "error"
+    | "aborted"
+    | "incomplete"
+    | "unknown";
+
+  sessionId?: string;
+  inputArtifacts: VersionedRef[];
+  outputArtifacts: VersionedRef[];
+  toolOperationRefs: string[];
+  evidenceRefs: string[];
+
+  leaseOwner?: string;
+  leaseExpiresAt?: string;
+  leaseToken: number;
+
+  preparedAt: string;
+  startedAt?: string;
+  runtimeEndedAt?: string;
+  settledAt?: string;
+
+  errorCode?: string;
+  sanitizedError?: string;
+};
+```
+
+每次取得或重新取得租约时，`leaseToken` 必须单调增加，续租只延长到期时间而不改变 token。Runtime 事件、RoleRun 状态写入和 Tool Gateway 请求都必须携带当前 token；Control Plane 与 Tool Gateway 在受理时拒绝旧 token。旧 Pi 进程即使继续返回内容，其事件和输出也不能进入权威状态，其新工具请求也不能被受理。恢复程序取得新 token 后，才可以处理原 RoleRun 或创建后续 RoleRun。
+
+Fencing 只隔离接管后的旧 Worker，不能撤销旧 token 有效期间已经由 Tool Gateway 受理的外部操作。Tool Gateway 必须在执行前持久化 Operation ID、幂等键和操作意图，并独立落账最终结果；恢复程序必须先查询这些操作，结果未知时保持 `blocked`，不得凭新 token 重复提交。
+
+Pi 的 `runtimeOutcome = completed` 不等于 RoleRun `succeeded`。只有输出制品完整、工具操作全部对账且要求的自检通过后，RoleRun 才能成功结算。
+
+RoleRun 按以下顺序启动和结算：
+
+```text
+事务：创建 prepared RoleRun
+-> 事务：取得租约并改为 starting
+-> 创建 Pi Session
+-> 事务：保存 Session ID 并改为 running
+-> 提交事务后调用 session.run(prompt)
+-> Pi 结束
+-> 事务：改为 settling 并保存 runtimeOutcome
+-> 对账工具操作并封存输出
+-> 事务：改为 settled 或 blocked
+```
+
+任何模型请求和工具执行都必须发生在 `running` 已持久化之后。同一个 RoleRun 不得更换 Pi Session 后重新执行 Prompt；需要重试时必须先结算当前 RoleRun，再创建新的 RoleRun 并检查 Manifest 次数上限。
+
+中断恢复规则如下：
+
+| 中断位置 | 恢复方式 |
+| --- | --- |
+| **`prepared`** | 尚未启动 Pi，可以安全继续。 |
+| **`starting` 且无 Session ID** | 租约过期并取得新 fencing token 后，可以重新创建 Session；旧 Worker 保存 Session ID 失败后不得调用 Pi。 |
+| **`running`** | 原进程内 Session 不再可信，转入 `settling`，按 `incomplete` 对账。 |
+| **`settling`** | 幂等继续对账和封存，不能重新运行 Agent。 |
+| **存在未知工具结果** | RoleRun 与 Run 进入 `blocked`，必须完成对账或人工判断。 |
+| **无未知副作用且允许重试** | 当前 RoleRun 以 `interrupted` 结算，再创建新的 RoleRun。 |
+
 ## 已确认的 RunManifest V1
 
 RunManifest 只保存本次执行获准使用的输入、能力和限制。运行状态、输出、证据和秘密值不进入 Manifest。
@@ -380,7 +512,7 @@ Control Plane 记录决定时必须校验审批人身份与角色、Approval 版
 
 1. 其余合法状态转换、每次转换所需的输出与门禁，以及阻塞后的恢复规则。
 2. Approval 请求撤回、超时失效和批准后撤销如何生效。
-3. Run 和 RoleRun 的字段、状态与版本。
+3. Run 的核心字段，以及 Run 与 Task 状态转换的完整对应关系。
 4. 持久化数据库、事务边界、迁移方式和并发控制。
 5. Agent 启动、运行和完成各阶段发生进程中断时的恢复与对账语义。
 6. 第 3 步的自动化验收条件。

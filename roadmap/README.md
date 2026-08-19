@@ -47,7 +47,9 @@ v0.1 的设计是供真实项目验证的受控基线，不以一次性覆盖所
 
 已确认 `seal_run_manifest` 使用 RFC 8785 与 SHA-256 原子保存 Run、不可变 Manifest 和待授权请求，Task 保持 `planning`。v0.1 始终要求 Human Authority 明确作出 Run Authorization；最终授权和执行前校验通过后，Control Plane 先持久化 `planning → executing`，事务提交后才允许创建 Executor RoleRun 或产生副作用。
 
-仍需依次确认其余合法状态转换及门禁、Approval 的撤回与失效等异常生命周期、Run 和 RoleRun 状态、持久化方案、并发与中断恢复语义，以及第 3 步的完整验收条件。详细讨论记录见 [`docs/design/control-plane-state-and-run-manifest.md`](../docs/design/control-plane-state-and-run-manifest.md)。
+已确认 Run 与 RoleRun 分别保存流程状态和最终结果。RoleRun 必须经历持久化准备、租约启动、运行和外部操作结算，Pi 的完成结果不能代替 RoleRun 成功；未知副作用进入 `blocked` 而不是自动失败重试。Worker 租约使用单调递增 fencing token，状态写入与新工具请求拒绝旧 token；接管前已经受理的工具操作仍须按 Operation ID 和幂等键完成对账。
+
+仍需依次确认其余合法状态转换及门禁、Approval 的撤回与失效等异常生命周期、Run 核心字段、持久化方案、工具结果对账细节，以及第 3 步的完整验收条件。详细讨论记录见 [`docs/design/control-plane-state-and-run-manifest.md`](../docs/design/control-plane-state-and-run-manifest.md)。
 
 ### 第 2 步实际结果
 

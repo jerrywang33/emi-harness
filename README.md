@@ -238,6 +238,10 @@ Run 是针对一个已批准 TRD 版本，在固定输入、权限和目标代�
 
 PRD、ContextManifest、TRD、目标仓库基线、Runtime、模型、角色、资源、工具、策略、权限、隔离方式或审批条件等已锁定内容发生变化时，必须终止当前 Run 并在重新满足前置门禁后生成新 Run。Agent 不得在现有 Run 内自行改变这些边界；代码、测试、验证结果、工具证据和获准范围内的返工属于 Run 输出，不修改 RunManifest。
 
+Run 依次处于等待授权、已授权、活动、停止中、阻塞或已结算状态；RoleRun 依次处于已准备、启动中、运行中、结算中、阻塞或已结算状态。Pi 正常结束不代表 RoleRun 成功，只有输出已封存且外部操作全部对账后才能结算；未知副作用不是终态，必须保持阻塞并停止自动重试。
+
+RoleRun 在创建 Pi Session 前先持久化，并通过带单调递增 fencing token 的 Worker 租约执行。Runtime 事件、状态写入和 Tool Gateway 请求都必须携带当前 token，Control Plane 和 Tool Gateway 拒绝旧 token，防止租约过期后的旧 Worker 再次修改权威状态或发起新操作。租约失效前已经受理的外部操作不会被 token 自动撤销，必须按持久化 Operation ID 和幂等键完成对账后再决定恢复或重试。
+
 ### 运行清单
 
 每次受控运行都在启动 Agent 前形成不可随运行修改的 RunManifest。它只保存本次执行获准使用的输入、能力和限制，至少包括 Task 与 Run 标识，PRD、ContextManifest、TRD、执行计划和前置审批引用，目标仓库基线，Harness、Pi 与 Adapter 版本，各角色的模型、资源、Skills、Prompts、精确工具白名单和隔离配置，以及策略、限制、验收标准和证据要求。所有可变输入都必须使用确定版本和 SHA-256 引用。
