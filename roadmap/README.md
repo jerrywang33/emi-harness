@@ -33,6 +33,8 @@
 
 已确认 `start_contextualization` 负责将 Task 从 `intake` 推进到 `contextualizing`。离开 `intake` 前必须绑定满足最小内容要求的版本化 PRD，并通过 Task 版本、命令幂等键和原子状态记录阻止并发覆盖与重复转换；本转换不需要额外人工审批。
 
+已确认 `complete_contextualization` 负责将 Task 从 `contextualizing` 推进到 `drafting_trd`。进入技术设计前必须封存与当前 PRD 对应的 ContextManifest，所有适用性和监管解释都有有效确认依据，并且不存在阻塞事项；Agent 只能整理上下文，不能自行确认监管结论或降低问题等级。
+
 仍需依次确认合法状态转换及门禁、Approval 语义、RunManifest 字段和封存规则、持久化方案、并发与中断恢复语义，以及第 3 步的完整验收条件。详细讨论记录见 [`docs/design/control-plane-state-and-run-manifest.md`](../docs/design/control-plane-state-and-run-manifest.md)。
 
 ### 第 2 步实际结果

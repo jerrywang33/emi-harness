@@ -95,6 +95,32 @@ Control Plane 必须在同一事务中：
 
 请求必须携带唯一 Command ID。同一 Task 重复提交同一个 Command ID 时返回第一次转换的结果，不重复更新 Task 或追加记录。PRD 信息不足时 Task 保持 `intake` 并返回缺失字段；Task 版本过期或当前状态不符时拒绝转换，调用方必须重新读取权威状态。
 
+### `complete_contextualization`
+
+```text
+contextualizing -> drafting_trd
+```
+
+这条转换表示当前 Task 适用的 EMI Context 已经形成并封存，可以据此开始技术设计。
+
+转换前必须满足：
+
+- Task 当前状态是 `contextualizing`，请求携带与当前 Task 一致的 `expectedTaskVersion`。
+- ContextManifest 已持久化并封存，具有 Context ID、版本和 SHA-256。
+- ContextManifest 绑定的 PRD ID、版本和 SHA-256 与 Task 当前绑定一致。
+- 已明确牌照主体与角色、司法辖区、产品和业务场景、客户类型及数据类型。
+- 每条适用规则都具有来源、版本、适用范围、确认状态和责任人。
+- 每项适用性判断和监管解释都能关联到已批准政策或 Human Authority 的有效确认记录。
+- 不存在尚未解决的阻塞事项。
+
+待确认事项必须记录问题描述、是否阻塞、分类依据、责任人和证据引用。非阻塞事项可以保留，但必须进入 TRD 的已知限制并持续追踪；阻塞事项存在时 Task 保持 `contextualizing`。Agent 不能自行把问题标记为非阻塞：能够由确定性政策判断的按政策执行，其余必须由 Human Authority 确认。
+
+来源冲突、来源版本失效、适用司法辖区不明确，以及会影响资金、账务、AML 与制裁控制、客户权利、个人数据或核心验收标准的问题默认阻塞，除非有效政策或 Human Authority 明确作出其他决定并记录依据。
+
+本转换不额外要求一次笼统审批，但所有需要人工判断的内容必须已经具有有效确认依据。Agent 可以整理 EMI Context，不能确认监管结论；Control Plane 只接受满足上述门禁的 ContextManifest。
+
+Control Plane 必须在同一事务中校验 Task、PRD 和 ContextManifest 的版本与摘要，确认阻塞事项为零，将 ContextManifest 绑定到 Task，将状态更新为 `drafting_trd` 并增加 Task 版本，然后追加包含 ContextManifest 和确认依据引用的 TaskTransition。ContextManifest 校验失败、PRD 已变化或存在阻塞事项时不写入任何状态变化。
+
 ## 待确认问题
 
 1. 其余合法状态转换、每次转换所需的输出与门禁，以及阻塞后的恢复规则。
