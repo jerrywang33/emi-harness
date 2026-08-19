@@ -18,6 +18,7 @@
 Task
 ├── TaskTransition[]
 ├── Approval[]
+│   └── ApprovalDecision[]
 └── Run[]
     ├── RunManifest
     └── RoleRun[]
@@ -28,7 +29,8 @@ Task
 | --- | --- |
 | **Task** | 表示一个用户交付目标，保存当前阶段、当前版本和最终结果。 |
 | **TaskTransition** | 追加记录状态变化、操作者、原因以及审批和证据引用。 |
-| **Approval** | 保存绑定确定对象标识、版本和哈希的待审批请求，以及 Human Authority 作出的决定。 |
+| **Approval** | 保存绑定确定对象标识、版本和哈希的待审批请求，并聚合所需 Human Authority 作出的决定。 |
+| **ApprovalDecision** | 追加记录一个 Human Authority 对该请求作出的决定、理由、条件和证据，不允许原地修改。 |
 | **RunManifest** | 锁定一次受控运行使用的任务版本、角色、Runtime、资源、工具、策略、目标仓库基线和审批。 |
 | **RoleRun** | 记录某个角色的一次实际执行或重试，并关联 Pi Session 和运行结果。 |
 
@@ -159,10 +161,38 @@ Control Plane 必须在同一事务中校验 Task、PRD、ContextManifest 和 TR
 
 同一个 TRD 摘要只能存在一个有效的待审批请求。TRD 内容发生任何变化时，当前请求失效，必须生成新版本和摘要后重新提交。Agent 可以起草并请求提交，但不能批准自己的 TRD。外部审批系统通知在事务提交后执行；通知失败不回滚权威审批请求，而是保留待发送状态并安全重试。
 
+### TRD Approval 决策与回流
+
+一个 TRD Approval 可以根据审批策略要求多个 Human Authority 分别决策。每个人的决定以不可修改的 ApprovalDecision 追加保存；在所需决定全部满足前，Task 保持 `awaiting_trd_approval`。单个人的批准不能代替 Approval 的聚合结果。
+
+决策命令为 `record_trd_approval_decision`。该命令始终追加一项审批决定，但只有聚合结果达到终态时才产生 Task 状态转换；仍需等待其他审批人时，Task 状态保持不变。
+
+最终结果与 Task 状态对应如下：
+
+| 结果 | Task 处理 |
+| --- | --- |
+| **`approved`** | 所有要求的审批角色均已满足，进入 `planning`。 |
+| **`approved_with_conditions`** | `planning` 前条件满足后进入 `planning`；只包含后续门禁条件时可以进入 `planning`。 |
+| **`changes_requested`** | 技术设计问题返回 `drafting_trd`，EMI Context 或适用性问题返回 `contextualizing`，PRD、目标或范围问题返回 `intake`。 |
+| **`rejected`** | 进入 `blocked`，由授权人员决定重新开始或取消，不直接关闭 Task。 |
+
+原 TRD、ContextManifest 和 PRD 版本保持不可修改。修改时必须创建新版本，旧审批请求和意见继续作为历史证据保留。
+
+附条件批准的每个条件必须记录 Condition ID、描述、责任人、`planning`、`execution` 或 `acceptance` 生效门禁、验证方式和证据引用：
+
+- `planning` 前条件未满足时，Task 继续停留在 `awaiting_trd_approval`。
+- `execution` 或 `acceptance` 前条件可以允许 Task 进入 `planning`，但必须进入 RunManifest 并由对应状态门禁检查。
+- 会改变 TRD、监管解释或核心验收标准的事项不能作为附加条件，必须使用 `changes_requested` 并重新审批。
+- Agent 不能自行宣布条件已经满足。
+
+每条 ApprovalDecision 至少记录 Decision ID、Approval ID 与版本、决定、Authority ID 与角色、理由、结构化条件、证据引用和决定时间。审批策略确定所需角色、聚合规则、审批人与作者或提交人的独立性，以及审批有效期。
+
+Control Plane 记录决定时必须校验审批人身份与角色、Approval 版本，以及绑定的 TRD、PRD 和 ContextManifest 是否仍然有效，然后追加 ApprovalDecision 并重新计算 Approval 结果。只有形成最终结果时，才在同一事务中更新 Task、增加 Task 版本并追加 TaskTransition；仍需等待其他决定时不改变 Task 状态。
+
 ## 待确认问题
 
 1. 其余合法状态转换、每次转换所需的输出与门禁，以及阻塞后的恢复规则。
-2. 哪些转换必须具备何种 Approval，以及批准、附条件批准、退回和撤销如何生效。
+2. Approval 请求撤回、超时失效和批准后撤销如何生效。
 3. Run、RunManifest 和 RoleRun 的字段、版本及封存时机。
 4. 持久化数据库、事务边界、迁移方式和并发控制。
 5. Agent 启动、运行和完成各阶段发生进程中断时的恢复与对账语义。

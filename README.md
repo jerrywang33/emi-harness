@@ -133,7 +133,7 @@ Control Plane 使用以下五类记录保存权威事实，而不是从 Pi Sessi
 | --- | --- | --- |
 | **Task** | 保存一个用户交付目标、当前阶段、版本和最终结果。 | Control Plane 判断任务当前处于什么阶段的依据。 |
 | **TaskTransition** | 追加记录每次状态变化的原状态、目标状态、操作者、原因以及审批和证据引用。 | 与 Task 状态在同一事务中写入，形成不可省略的状态变化历史。 |
-| **Approval** | 保存待审批请求，以及 Human Authority 对确定版本对象作出的批准、附条件批准或退回决定。 | 请求和决定都必须绑定被审批对象的标识、版本和哈希；对象变化后原审批不能继续使用。 |
+| **Approval** | 保存待审批请求，以及一个或多个 Human Authority 对确定版本对象作出的 ApprovalDecision。 | 请求和每项决定都必须绑定被审批对象的标识、版本和哈希；对象变化后原审批不能继续使用。 |
 | **RunManifest** | 锁定一次受控运行使用的任务版本、角色、Runtime、资源、工具、策略、目标仓库基线和审批引用。 | 封存后不可修改；任何已锁定内容变化都必须生成新的 Run 和 Manifest。 |
 | **RoleRun** | 记录某个角色的一次实际执行或重试，以及对应的 Pi Session 和运行结果。 | Pi Session 只关联 RoleRun，不代表 Task 状态或交付结论。 |
 
@@ -146,8 +146,11 @@ flowchart TD
     intake["intake<br/>确认目标与 PRD"] --> contextualizing["contextualizing<br/>确定 EMI Context"]
     contextualizing --> drafting_trd["drafting_trd<br/>编写或修订 TRD"]
     drafting_trd --> awaiting_trd_approval["awaiting_trd_approval<br/>等待 TRD 审批"]
-    awaiting_trd_approval -->|批准| planning["planning<br/>分解任务并生成 RunManifest"]
-    awaiting_trd_approval -->|要求修订| drafting_trd
+    awaiting_trd_approval -->|审批满足| planning["planning<br/>分解任务并生成 RunManifest"]
+    awaiting_trd_approval -->|技术设计需修改| drafting_trd
+    awaiting_trd_approval -->|EMI Context 需修改| contextualizing
+    awaiting_trd_approval -->|PRD 需修改| intake
+    awaiting_trd_approval -->|拒绝| blocked
     planning --> executing["executing<br/>执行变更与自检"]
     executing --> verifying["verifying<br/>独立验证"]
     verifying -->|实现问题| executing
@@ -168,7 +171,7 @@ flowchart TD
 | **`intake`** | 用户 / Coordinator | 用户目标、PRD 引用、版本与哈希、初步范围、期望结果和初始风险等级。 |
 | **`contextualizing`** | Coordinator，按需调用领域能力 | 已封存的 ContextManifest，以及适用司法辖区、业务场景、权威来源、规则版本、确认依据和非阻塞待确认事项。 |
 | **`drafting_trd`** | Coordinator | 已封存并可追溯到 PRD 和 EMI Context 的 TRD，包含系统行为、技术方案、控制要求、风险和验收标准。 |
-| **`awaiting_trd_approval`** | Human Authority | 对确定版本和哈希的 TRD 作出的批准、附条件批准或退回结论。 |
+| **`awaiting_trd_approval`** | Human Authority | 对确定版本和哈希的 TRD 作出的一个或多个决定、附加条件及最终聚合结果。 |
 | **`planning`** | Coordinator / Control Plane | 可独立验证的任务清单，以及锁定 Pi 版本、角色、资源、Skills、Tools、Policies 和目标仓库状态的 RunManifest。 |
 | **`executing`** | Executor | 代码、配置、测试变更及 RunManifest 要求的自检证据。 |
 | **`verifying`** | Verifier 与受控验证工具 | 可复现的验证结果、原始证据及独立 PASS 或 FAIL 结论。 |
