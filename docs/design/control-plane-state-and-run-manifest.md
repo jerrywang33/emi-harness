@@ -192,6 +192,47 @@ Pi Session ID、开始与结束时间、运行状态、Agent 消息或推理、�
 
 RunManifest 可以包含 TRD 等前置 Approval 引用，但授权执行该 Manifest 的 Run Authorization Approval 不能进入 Manifest，否则会形成审批引用依赖 Manifest 摘要、Manifest 摘要又包含审批引用的循环。Run Authorization Approval 保存在 RunManifest 外部并绑定其摘要；只有它满足门禁后，Control Plane 才能创建可执行 RoleRun。
 
+## 已确认的 Manifest 封存与执行授权
+
+### `seal_run_manifest`
+
+`planning` 阶段先形成版本化执行计划，再通过 `seal_run_manifest` 组合并封存 RunManifest。Control Plane 不保存可原地修改的 Manifest 草稿；Coordinator 可以生成新的执行计划版本，但每次成功封存都创建新的 Run 和 Manifest。
+
+封存前必须满足：
+
+- Task 处于 `planning`，请求携带正确的 `expectedTaskVersion` 和唯一 Command ID。
+- TRD Approval 仍然有效，执行计划已经版本化并生成摘要。
+- Manifest 中所有资源、策略、工具和环境引用都能从权威来源解析且摘要一致。
+- 目标仓库仍处于声明的基线 commit，或者准确匹配已批准 Patch。
+- 当前 Task 不存在另一个待授权或活动 Run。
+- 所有 `planning` 前 ApprovalCondition 已满足并具有有效证据。
+
+Manifest 使用 RFC 8785 JSON Canonicalization Scheme 生成规范 JSON，以 UTF-8 编码计算 SHA-256，并按 `sha256:{lowercase hex}` 保存摘要。没有顺序语义的数组必须按 Schema 规定的稳定键排序。
+
+Control Plane 必须在同一事务中重新读取并校验所有权威引用，生成 Run ID 和最终 Manifest，保存规范 Manifest 与摘要，创建绑定该摘要的 `run_authorization` Approval，并记录 Run 正在等待授权。Task 状态保持 `planning`。同一 Command ID 重复提交时必须返回第一次封存结果，不能创建第二个 Run。
+
+### Run Authorization
+
+决策命令为 `record_run_authorization_decision`。授权人批准的是目标仓库与路径范围、模型与上下文资源、工具与网络权限、隔离环境与凭据范围、执行限制、职责分离、验证和证据要求。
+
+v0.1 的每个 Run 都要求 Human Authority 明确授权，不允许自动授权。Run Authorization 只接受以下最终结果：
+
+| 结果 | 处理 |
+| --- | --- |
+| **`approved`** | 所需授权全部满足后执行激活前校验。 |
+| **`changes_requested`** | 当前 Manifest 永久保留但不可执行；Task 保持 `planning`，修改执行计划后创建新 Run。 |
+| **`rejected`** | 当前 Run 不可执行，Task 进入 `blocked`。 |
+
+Run Authorization 不允许新增 `approved_with_conditions`。授权人提出的新条件必须先进入新的 RunManifest，再重新计算摘要和审批，不能把未锁定条件附在 Manifest 外。
+
+### `planning -> executing`
+
+最后一个所需授权决定形成后，Control Plane 必须重新校验 Task、Run、Manifest 和 Approval 版本，PRD、ContextManifest、TRD 和前置审批有效性，目标仓库基线，所有 `execution` 前条件，资源、工具、策略、隔离和凭据绑定，以及同一 Task 没有其他活动 Run。
+
+全部通过后，Control Plane 在同一事务中记录 Run 已授权，将 Task 更新为 `executing` 并增加版本，然后追加引用 Run ID、Manifest 摘要和 Run Authorization Approval 的 TaskTransition。事务提交前不得创建 Pi Session、RoleRun 或执行工具；提交后才能创建第一个 Executor RoleRun。
+
+如果提交事务后、创建 RoleRun 前发生中断，恢复程序根据处于 `executing` 的 Task、已授权 Run 和不存在 RoleRun 的事实安全继续，不读取 Pi 对话推断。Run Authorization 已批准但 `planning -> executing` 事务尚未提交时，如果发现代码基线或其他锁定内容变化，当前 Run 不得激活；Task 保持 `planning`，并创建新的 Run 和 Manifest。事务提交后的外部变化如何停止和恢复，纳入后续中断与对账设计。
+
 ## 已确认的 Task 状态
 
 | 状态 | 含义 |
@@ -339,7 +380,7 @@ Control Plane 记录决定时必须校验审批人身份与角色、Approval 版
 
 1. 其余合法状态转换、每次转换所需的输出与门禁，以及阻塞后的恢复规则。
 2. Approval 请求撤回、超时失效和批准后撤销如何生效。
-3. RunManifest 的生成与封存时机，以及 Run 和 RoleRun 的字段、状态与版本。
+3. Run 和 RoleRun 的字段、状态与版本。
 4. 持久化数据库、事务边界、迁移方式和并发控制。
 5. Agent 启动、运行和完成各阶段发生进程中断时的恢复与对账语义。
 6. 第 3 步的自动化验收条件。

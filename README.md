@@ -151,7 +151,7 @@ flowchart TD
     awaiting_trd_approval -->|EMI Context 需修改| contextualizing
     awaiting_trd_approval -->|PRD 需修改| intake
     awaiting_trd_approval -->|拒绝| blocked
-    planning --> executing["executing<br/>执行变更与自检"]
+    planning -->|Run Authorization 通过| executing["executing<br/>执行变更与自检"]
     executing --> verifying["verifying<br/>独立验证"]
     verifying -->|实现问题| executing
     verifying -->|上下文缺口| contextualizing
@@ -172,7 +172,7 @@ flowchart TD
 | **`contextualizing`** | Coordinator，按需调用领域能力 | 已封存的 ContextManifest，以及适用司法辖区、业务场景、权威来源、规则版本、确认依据和非阻塞待确认事项。 |
 | **`drafting_trd`** | Coordinator | 已封存并可追溯到 PRD 和 EMI Context 的 TRD，包含系统行为、技术方案、控制要求、风险和验收标准。 |
 | **`awaiting_trd_approval`** | Human Authority | 对确定版本和哈希的 TRD 作出的一个或多个决定、附加条件及最终聚合结果。 |
-| **`planning`** | Coordinator / Control Plane | 可独立验证的任务清单，以及锁定 Pi 版本、角色、资源、Skills、Tools、Policies 和目标仓库状态的 RunManifest。 |
+| **`planning`** | Coordinator / Control Plane | 可独立验证的执行计划、已封存的 RunManifest，以及绑定其摘要的有效 Run Authorization。 |
 | **`executing`** | Executor | 代码、配置、测试变更及 RunManifest 要求的自检证据。 |
 | **`verifying`** | Verifier 与受控验证工具 | 可复现的验证结果、原始证据及独立 PASS 或 FAIL 结论。 |
 | **`awaiting_acceptance`** | 用户 / Human Authority | 最终接受、范围内返工或范围变更结论。 |
@@ -246,7 +246,11 @@ Manifest 不保存 Pi Session、运行状态、Agent 推理、代码输出、工
 
 Manifest 使用确定性 JSON 序列化和 SHA-256 生成摘要，摘要保存在 Run 记录中；摘要用于发现内容变化，不等同于数字签名或存储安全证明。RunManifest 可以包含 TRD 等前置审批引用，但授权执行该 Manifest 的 Run Authorization Approval 必须保存在 Manifest 外并绑定其摘要，避免 Manifest 与自身审批形成循环依赖。
 
+Control Plane 通过 `seal_run_manifest` 重新读取所有权威引用，按照 RFC 8785 规范化 JSON，以 UTF-8 编码计算 SHA-256，并在同一事务中保存 Run、不可变 Manifest 和 `run_authorization` 待审批请求。Task 此时仍处于 `planning`。v0.1 的每个 Run 都需要 Human Authority 明确授权；Run Authorization 只能批准、要求修改或拒绝，新增条件必须写入新 Manifest 后重新计算摘要和审批。
+
 Manifest 封存并获得所需批准后，Control Plane 才能创建 RoleRun。每次角色执行或重试都有独立的 Role Run ID，并记录角色、尝试次数、Pi Session ID、开始和结束时间以及运行结果。运行中需要改变任何已锁定内容时，必须停止当前运行并生成新的 Run ID 和 Manifest，不允许 Agent 自行扩权、替换资源或修改运行基线。
+
+`planning` 进入 `executing` 前，Control Plane 必须再次校验所有绑定输入、目标代码基线、执行前条件、资源、权限、隔离和凭据引用，并在同一事务中保存 Run 已授权事实、更新 Task 和追加 TaskTransition。事务提交前不得创建 Pi Session 或执行工具；提交后尚未创建 RoleRun 即发生中断时，可以从权威状态安全继续。
 
 ### 目标源代码结构
 

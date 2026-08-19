@@ -45,7 +45,9 @@ v0.1 的设计是供真实项目验证的受控基线，不以一次性覆盖所
 
 已确认 RunManifest V1 只锁定执行输入、目标代码基线、Runtime、角色能力、策略限制和验证要求。所有引用必须版本化并带摘要，凭据只记录绑定引用，运行状态和输出不进入 Manifest；Manifest 自身的 Run Authorization Approval 保存在外部并绑定 Manifest 摘要，避免循环依赖。
 
-仍需依次确认其余合法状态转换及门禁、Approval 的撤回与失效等异常生命周期、RunManifest 生成与封存流程、Run 和 RoleRun 状态、持久化方案、并发与中断恢复语义，以及第 3 步的完整验收条件。详细讨论记录见 [`docs/design/control-plane-state-and-run-manifest.md`](../docs/design/control-plane-state-and-run-manifest.md)。
+已确认 `seal_run_manifest` 使用 RFC 8785 与 SHA-256 原子保存 Run、不可变 Manifest 和待授权请求，Task 保持 `planning`。v0.1 始终要求 Human Authority 明确作出 Run Authorization；最终授权和执行前校验通过后，Control Plane 先持久化 `planning → executing`，事务提交后才允许创建 Executor RoleRun 或产生副作用。
+
+仍需依次确认其余合法状态转换及门禁、Approval 的撤回与失效等异常生命周期、Run 和 RoleRun 状态、持久化方案、并发与中断恢复语义，以及第 3 步的完整验收条件。详细讨论记录见 [`docs/design/control-plane-state-and-run-manifest.md`](../docs/design/control-plane-state-and-run-manifest.md)。
 
 ### 第 2 步实际结果
 
