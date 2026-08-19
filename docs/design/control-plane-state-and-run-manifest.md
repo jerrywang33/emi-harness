@@ -42,9 +42,30 @@ Task
 - Pi Session ID 只用于关联 Agent 工作记录，不能改变 Task 状态、批准事项或交付结论。
 - 进程重启后必须仅依赖 Control Plane 持久化记录确定任务状态和恢复动作。
 
+## 已确认的 Task 状态
+
+| 状态 | 含义 |
+| --- | --- |
+| **`intake`** | Task 已创建，正在确认 PRD、目标、范围和初始风险。 |
+| **`contextualizing`** | 正在确定司法辖区、业务场景和适用的 EMI Context。 |
+| **`drafting_trd`** | 正在编写或修订 TRD。 |
+| **`awaiting_trd_approval`** | TRD 已形成，正在等待 Human Authority 审批。 |
+| **`planning`** | TRD 已批准，正在分解任务并生成、封存 RunManifest。 |
+| **`executing`** | Executor 正在按获准的 RunManifest 实现或返工。 |
+| **`verifying`** | Executor 已提交结果，Verifier 正在独立验证。 |
+| **`awaiting_acceptance`** | 验证已经通过，正在等待最终用户验收。 |
+| **`blocked`** | 自动流程已经停止，正在等待外部条件、人工判断或结果对账。 |
+| **`closed`** | Task 已结束，结果为 `completed` 或 `cancelled`。 |
+
+- `blocked` 只用于异常等待；正常的 TRD 审批和最终验收使用各自的等待状态。
+- 每次进入 `blocked` 都必须记录原因、现有证据、恢复条件和允许恢复到的状态。
+- Human Authority 是状态转换的操作者或批准者，不是 Task 状态。
+- Task 不使用 `failed` 终态。单次 Agent 或工具执行失败属于 RoleRun 或后续 Tool Operation 的结果，Task 必须明确进入返工、阻塞或取消路径。
+- `closed` 时必须存在 `completed` 或 `cancelled` 结果；其他状态不得提前保存最终结果。
+
 ## 待确认问题
 
-1. Task 状态名称、合法转换及阻塞后的恢复规则。
+1. 合法状态转换、每次转换所需的输出与门禁，以及阻塞后的恢复规则。
 2. 哪些转换必须具备何种 Approval，以及批准、附条件批准、退回和撤销如何生效。
 3. Run、RunManifest 和 RoleRun 的字段、版本及封存时机。
 4. 持久化数据库、事务边界、迁移方式和并发控制。

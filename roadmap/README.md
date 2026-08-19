@@ -29,7 +29,9 @@
 
 已确认 Control Plane 使用 Task、TaskTransition、Approval、RunManifest 和 RoleRun 五类记录保存权威事实。Task 与 TaskTransition 在同一事务中记录当前状态和变化历史；Approval 必须绑定被审批对象的确定版本和哈希；RunManifest 封存后不可修改；RoleRun 负责关联实际角色执行和 Pi Session，Pi Session 不承担权威状态职责。
 
-仍需依次确认任务状态及合法转换、审批门禁、RunManifest 字段和封存规则、持久化方案、并发与中断恢复语义，以及第 3 步的完整验收条件。详细讨论记录见 [`docs/design/control-plane-state-and-run-manifest.md`](../docs/design/control-plane-state-and-run-manifest.md)。
+已确认 Task 使用 `intake`、`contextualizing`、`drafting_trd`、`awaiting_trd_approval`、`planning`、`executing`、`verifying`、`awaiting_acceptance`、`blocked` 和 `closed` 十个状态。Human Authority 是操作者而不是状态；Task 不使用 `failed` 作为终态，一次执行失败由 RoleRun 记录并触发返工、阻塞或取消。
+
+仍需依次确认合法状态转换及门禁、Approval 语义、RunManifest 字段和封存规则、持久化方案、并发与中断恢复语义，以及第 3 步的完整验收条件。详细讨论记录见 [`docs/design/control-plane-state-and-run-manifest.md`](../docs/design/control-plane-state-and-run-manifest.md)。
 
 ### 第 2 步实际结果
 

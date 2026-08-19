@@ -134,50 +134,51 @@ Control Plane 使用以下五类记录保存权威事实，而不是从 Pi Sessi
 
 Task 保存当前状态和版本，TaskTransition 保存完整变化历史，两者必须在同一个持久化事务中保持一致。Run 表示一次获得授权的受控执行，由不可变的 RunManifest 和一个或多个 RoleRun 组成；Executor 与 Verifier 必须使用不同的 RoleRun 和 Pi Session。
 
+下图用于说明任务主线和主要回流方向，不是实现可直接采用的合法转换清单。每条转换所需的操作者、输入、审批、证据和恢复条件将在详细状态转换设计确认后确定。
+
 ```mermaid
 flowchart TD
-    intake["intake<br/>接收目标"] --> contextualize["contextualize<br/>确定适用上下文"]
-    contextualize --> specify["specify<br/>形成 TRD"]
-    specify --> approve["approve<br/>人工确认"]
-    approve -->|批准| plan["plan<br/>分解任务并组合能力"]
-    approve -->|要求修订| specify
-    plan --> execute["execute<br/>执行变更与自检"]
-    execute --> verify["verify<br/>独立验证"]
-    verify -->|实现问题| execute
-    verify -->|上下文或规格缺口| contextualize
-    verify -->|无法判断或高风险| human["Human Authority<br/>人工判断"]
-    human -->|确认后继续| verify
-    human -->|补充或修订| contextualize
-    human -->|停止自动执行| blocked["blocked<br/>等待外部处理"]
-    verify -->|超过重试上限| blocked
-    verify -->|PASS| accept["accept<br/>用户验收"]
-    accept -->|通过| close["close<br/>关闭任务"]
-    accept -->|范围内修复| execute
-    accept -->|范围发生变化| specify
-    blocked -->|用户终止| close
+    intake["intake<br/>确认目标与 PRD"] --> contextualizing["contextualizing<br/>确定 EMI Context"]
+    contextualizing --> drafting_trd["drafting_trd<br/>编写或修订 TRD"]
+    drafting_trd --> awaiting_trd_approval["awaiting_trd_approval<br/>等待 TRD 审批"]
+    awaiting_trd_approval -->|批准| planning["planning<br/>分解任务并生成 RunManifest"]
+    awaiting_trd_approval -->|要求修订| drafting_trd
+    planning --> executing["executing<br/>执行变更与自检"]
+    executing --> verifying["verifying<br/>独立验证"]
+    verifying -->|实现问题| executing
+    verifying -->|上下文缺口| contextualizing
+    verifying -->|TRD 缺口| drafting_trd
+    verifying -->|无法判断、高风险或超过重试上限| blocked["blocked<br/>停止自动流程"]
+    blocked -->|恢复后继续验证| verifying
+    blocked -->|补充适用上下文| contextualizing
+    verifying -->|PASS| awaiting_acceptance["awaiting_acceptance<br/>等待用户验收"]
+    awaiting_acceptance -->|通过| closed["closed<br/>任务结束"]
+    awaiting_acceptance -->|范围内修复| executing
+    awaiting_acceptance -->|范围发生变化| drafting_trd
+    blocked -->|用户终止| closed
 ```
 
 | 状态 | 主要责任 | 进入下一状态前必须形成的输出 |
 | --- | --- | --- |
-| **`intake`** | 用户 / Coordinator | 用户目标、初步范围、期望结果和初始风险等级。 |
-| **`contextualize`** | Coordinator，按需调用领域能力 | 适用司法辖区、业务场景、权威来源、规则版本及待确认事项。 |
-| **`specify`** | Coordinator | 包含系统行为、技术方案、控制要求和验收标准的 TRD。 |
-| **`approve`** | Human Authority | 对范围、高风险事项和验收标准作出的批准、附条件批准或退回结论。 |
-| **`plan`** | Coordinator / Control Plane | 可独立验证的任务清单，以及锁定 Pi 版本、角色、资源、Skills、Tools、Policies 和目标仓库状态的运行清单。 |
-| **`execute`** | Executor | 代码、配置、测试变更及运行清单要求的自检证据。 |
-| **`verify`** | Verifier 与受控验证工具 | 可复现的验证结果、原始证据及独立 PASS 或 FAIL 结论。 |
+| **`intake`** | 用户 / Coordinator | 用户目标、PRD 引用与版本、初步范围、期望结果和初始风险等级。 |
+| **`contextualizing`** | Coordinator，按需调用领域能力 | 适用司法辖区、业务场景、权威来源、规则版本及待确认事项。 |
+| **`drafting_trd`** | Coordinator | 与 PRD 和 EMI Context 对应的系统行为、技术方案、控制要求和验收标准。 |
+| **`awaiting_trd_approval`** | Human Authority | 对确定版本和哈希的 TRD 作出的批准、附条件批准或退回结论。 |
+| **`planning`** | Coordinator / Control Plane | 可独立验证的任务清单，以及锁定 Pi 版本、角色、资源、Skills、Tools、Policies 和目标仓库状态的 RunManifest。 |
+| **`executing`** | Executor | 代码、配置、测试变更及 RunManifest 要求的自检证据。 |
+| **`verifying`** | Verifier 与受控验证工具 | 可复现的验证结果、原始证据及独立 PASS 或 FAIL 结论。 |
+| **`awaiting_acceptance`** | 用户 / Human Authority | 最终接受、范围内返工或范围变更结论。 |
 | **`blocked`** | Coordinator / Human Authority | 阻塞原因、现有证据、恢复条件和恢复后应进入的目标状态。 |
-| **`accept`** | 用户 / Human Authority | 最终接受、范围内返工或范围变更结论。 |
-| **`close`** | Control Plane / Human Authority | `completed` 或 `cancelled` 结果、完整追溯关系、交付证据和必要的后续事项。 |
+| **`closed`** | Control Plane / Human Authority | `completed` 或 `cancelled` 结果、完整追溯关系、交付证据和必要的后续事项。 |
 
 ### 回流与终止规则
 
-- 实现与自检问题返回 `execute`；上下文、监管解释或 TRD 缺口返回 `contextualize` 或 `specify`，并重新经过必要审批。
+- 实现与自检问题返回 `executing`；上下文、监管解释或 TRD 缺口返回 `contextualizing` 或 `drafting_trd`，并重新经过必要审批。
 - 无法确定的语义判断、高风险决定和例外处理必须升级给 Human Authority，不允许 Agent 通过重试自行形成事实。
 - 自动重试达到当前策略规定的上限后进入 `blocked`，保存当前状态、失败证据和恢复条件并停止自动执行。
-- `blocked` 是可恢复的暂停状态，不是完成状态。它只能在外部条件满足且 Human Authority 记录恢复依据和目标状态后恢复；用户终止任务时以 `cancelled` 结果进入 `close` 并保留已有证据。
-- 用户要求的范围内修复可以返回 `execute`；目标、范围或验收标准变化必须返回 `specify` 并重新批准。
-- 每次状态转换都追加记录输入、决定、执行者和证据引用；`close` 只封闭完整证据链，不在结束时补造过程记录。
+- `blocked` 是可恢复的暂停状态，不是完成状态。它只能在外部条件满足且 Human Authority 记录恢复依据和目标状态后恢复；用户终止任务时以 `cancelled` 结果进入 `closed` 并保留已有证据。
+- 用户要求的范围内修复可以返回 `executing`；目标、范围或验收标准变化必须返回 `drafting_trd` 并重新批准。
+- 每次状态转换都追加记录输入、决定、执行者和证据引用；`closed` 只封闭完整证据链，不在结束时补造过程记录。
 - `retrospect` 是可选的关闭后活动。它可以提出 Harness 改进建议，但不得自动修改规则、运行配置或 Skills；任何改进都作为独立变更重新进入本生命周期。
 
 ## EMI Harness 实现结构
