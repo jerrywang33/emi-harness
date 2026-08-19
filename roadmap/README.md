@@ -31,6 +31,8 @@
 
 已确认 Task 使用 `intake`、`contextualizing`、`drafting_trd`、`awaiting_trd_approval`、`planning`、`executing`、`verifying`、`awaiting_acceptance`、`blocked` 和 `closed` 十个状态。Human Authority 是操作者而不是状态；Task 不使用 `failed` 作为终态，一次执行失败由 RoleRun 记录并触发返工、阻塞或取消。
 
+已确认 `start_contextualization` 负责将 Task 从 `intake` 推进到 `contextualizing`。离开 `intake` 前必须绑定满足最小内容要求的版本化 PRD，并通过 Task 版本、命令幂等键和原子状态记录阻止并发覆盖与重复转换；本转换不需要额外人工审批。
+
 仍需依次确认合法状态转换及门禁、Approval 语义、RunManifest 字段和封存规则、持久化方案、并发与中断恢复语义，以及第 3 步的完整验收条件。详细讨论记录见 [`docs/design/control-plane-state-and-run-manifest.md`](../docs/design/control-plane-state-and-run-manifest.md)。
 
 ### 第 2 步实际结果

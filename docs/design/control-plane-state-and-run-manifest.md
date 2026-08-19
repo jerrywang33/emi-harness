@@ -63,9 +63,41 @@ Task
 - Task 不使用 `failed` 终态。单次 Agent 或工具执行失败属于 RoleRun 或后续 Tool Operation 的结果，Task 必须明确进入返工、阻塞或取消路径。
 - `closed` 时必须存在 `completed` 或 `cancelled` 结果；其他状态不得提前保存最终结果。
 
+## 已确认的状态转换
+
+Agent、用户或确定性流程只能向 Control Plane 请求状态转换，不能直接修改 Task。Control Plane 必须检查当前状态、调用方看到的 Task 版本、输入、权限和门禁，并在同一持久化事务中更新 Task 和追加 TaskTransition。
+
+### `start_contextualization`
+
+```text
+intake -> contextualizing
+```
+
+这条转换表示任务目标和 PRD 已经达到可分析程度，可以开始确定适用的 EMI Context。
+
+转换前必须满足：
+
+- Task 当前状态是 `intake`。
+- 请求携带与当前 Task 一致的 `expectedTaskVersion`。
+- 用户目标明确且非空。
+- Task 已绑定确定的 PRD ID、版本和 SHA-256。
+- PRD 至少包含目标、范围、不做什么、业务验收标准和责任人；小任务可以使用满足这些字段的精简 PRD。
+- 初始风险等级、请求者身份和转换原因已经记录。
+
+本转换只开始受控分析，不执行代码、不调用有副作用的工具，也不形成监管结论，因此不需要额外 Approval。
+
+Control Plane 必须在同一事务中：
+
+1. 校验当前状态和 `expectedTaskVersion`。
+2. 校验 PRD 引用、版本、摘要和最小内容。
+3. 将 Task 状态更新为 `contextualizing` 并增加 Task 版本。
+4. 追加包含 Transition ID、Task ID、Command ID、原状态、目标状态、原版本、目标版本、请求者、原因、PRD 引用和发生时间的 TaskTransition。
+
+请求必须携带唯一 Command ID。同一 Task 重复提交同一个 Command ID 时返回第一次转换的结果，不重复更新 Task 或追加记录。PRD 信息不足时 Task 保持 `intake` 并返回缺失字段；Task 版本过期或当前状态不符时拒绝转换，调用方必须重新读取权威状态。
+
 ## 待确认问题
 
-1. 合法状态转换、每次转换所需的输出与门禁，以及阻塞后的恢复规则。
+1. 其余合法状态转换、每次转换所需的输出与门禁，以及阻塞后的恢复规则。
 2. 哪些转换必须具备何种 Approval，以及批准、附条件批准、退回和撤销如何生效。
 3. Run、RunManifest 和 RoleRun 的字段、版本及封存时机。
 4. 持久化数据库、事务边界、迁移方式和并发控制。

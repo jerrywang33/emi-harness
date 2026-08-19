@@ -160,7 +160,7 @@ flowchart TD
 
 | 状态 | 主要责任 | 进入下一状态前必须形成的输出 |
 | --- | --- | --- |
-| **`intake`** | 用户 / Coordinator | 用户目标、PRD 引用与版本、初步范围、期望结果和初始风险等级。 |
+| **`intake`** | 用户 / Coordinator | 用户目标、PRD 引用、版本与哈希、初步范围、期望结果和初始风险等级。 |
 | **`contextualizing`** | Coordinator，按需调用领域能力 | 适用司法辖区、业务场景、权威来源、规则版本及待确认事项。 |
 | **`drafting_trd`** | Coordinator | 与 PRD 和 EMI Context 对应的系统行为、技术方案、控制要求和验收标准。 |
 | **`awaiting_trd_approval`** | Human Authority | 对确定版本和哈希的 TRD 作出的批准、附条件批准或退回结论。 |
