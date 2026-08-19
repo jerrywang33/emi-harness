@@ -46,6 +46,29 @@ Task
 - Pi Session ID 只用于关联 Agent 工作记录，不能改变 Task 状态、批准事项或交付结论。
 - 进程重启后必须仅依赖 Control Plane 持久化记录确定任务状态和恢复动作。
 
+## 已确认的 Run 边界
+
+Run 表示一个已批准 TRD 版本在固定输入、权限和目标代码基线下获得授权的一次交付尝试。Run 不等同于整个 Task、一次模型调用或一个 Pi Session。一个 Task 可以有多个 Run；一个 Run 只对应一个不可变 RunManifest，并可以在获准范围和重试限制内包含多个 RoleRun。
+
+同一个 Run 可以依次包含 Executor 实现、Verifier 验证、Executor 范围内返工和 Verifier 复验。每个 RoleRun 表示一个角色的一次实际执行或重试，对应一个独立 Pi Session，并记录实际消费和产生的制品。Pi Session 内部的 Provider 或模型重试仍属于同一个 RoleRun；RoleRun 结束后重新启动 Agent 必须创建新的 RoleRun。
+
+以下任意已锁定内容变化时，当前 Run 必须终止，并在 Task 重新满足前置门禁后创建新 Run：
+
+- PRD、ContextManifest 或 TRD 的版本或摘要。
+- 目标仓库的固定基线提交；Executor 在隔离工作区内产生的获准输出不视为外部基线变化。
+- Pi、Adapter、Harness 或模型版本。
+- 角色、资源、Skill、Prompt、工具白名单或策略。
+- 执行范围、权限、隔离方式或审批条件。
+- 已批准的重试或返工限制。
+
+RoleRun 状态、Pi Session ID、代码和测试制品、Verifier 结果、工具操作证据、条件满足证据以及获准范围内的返工属于运行事实或输出，不修改 RunManifest。每个 RoleRun 必须绑定其实际输入和输出制品，防止 Verifier 检查过期的 Executor 结果。
+
+v0.1 的并发边界如下：
+
+- 一个 Task 同时最多只有一个活动 Run。
+- Executor 与 Verifier 不得同时执行，也不得共享 RoleRun 或 Pi Session。
+- 后续需要并行 Executor 时，必须由新版本 RunManifest 明确声明，不能由 Agent 临时扩展。
+
 ## 已确认的 Task 状态
 
 | 状态 | 含义 |

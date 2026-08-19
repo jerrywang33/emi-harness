@@ -230,6 +230,14 @@ flowchart LR
 - Pi Extension Hook 可用于运行事件适配和辅助检查，但不是安全边界；工具客户端不直接执行文件、Shell、网络或外部系统副作用。
 - Pi Session 可以保存模型上下文和 Agent 工作轨迹，但任务状态、审批、工具操作结果和交付结论以 EMI 自有存储为准。
 
+### Run 与 RoleRun
+
+Run 是针对一个已批准 TRD 版本，在固定输入、权限和目标代码基线下获得授权的一次交付尝试，不等同于整个 Task、一次模型调用或一个 Pi Session。一个 Task 可以有多个 Run；一个 Run 只对应一个不可变 RunManifest，并可以在获准范围和重试限制内包含多个 Executor 或 Verifier RoleRun。
+
+每个 RoleRun 表示一个角色的一次实际执行或重试，使用独立 Pi Session，并记录实际消费和产生的制品。Executor 与 Verifier 不得共享 RoleRun 或 Pi Session，也不得同时执行。v0.1 中一个 Task 同时最多只有一个活动 Run；RoleRun 结束后重新启动 Agent 必须创建新的 RoleRun，Pi Session 内部的模型重试仍属于原 RoleRun。
+
+PRD、ContextManifest、TRD、目标仓库基线、Runtime、模型、角色、资源、工具、策略、权限、隔离方式或审批条件等已锁定内容发生变化时，必须终止当前 Run 并在重新满足前置门禁后生成新 Run。Agent 不得在现有 Run 内自行改变这些边界；代码、测试、验证结果、工具证据和获准范围内的返工属于 Run 输出，不修改 RunManifest。
+
 ### 运行清单
 
 每次受控运行都在启动 Agent 前形成不可随运行修改的 RunManifest，至少记录 Run ID、Task ID 与版本、各角色配置、Pi 与 Adapter 版本、资源版本与哈希、工具白名单、策略版本、目标仓库与基线提交、必要的审批引用。Manifest 使用确定性序列化和 SHA-256 生成摘要，审批必须绑定这一确定版本和摘要；摘要用于发现内容变化，不等同于数字签名或存储安全证明。

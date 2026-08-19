@@ -41,6 +41,8 @@ v0.1 的设计是供真实项目验证的受控基线，不以一次性覆盖所
 
 已确认 TRD Approval 可以要求多个 Human Authority 分别追加 ApprovalDecision。全部门禁满足后进入 `planning`；技术设计、EMI Context 或 PRD 问题分别返回 `drafting_trd`、`contextualizing` 或 `intake`；拒绝进入 `blocked`。附条件批准只能携带结构化、可验证的后续条件，不能绕过会改变 TRD 或监管解释的重新审批。
 
+已确认 Run 表示一个已批准 TRD 版本在固定输入、权限和代码基线下获得授权的一次交付尝试。一个 Run 对应一个不可变 RunManifest，并可包含多个独立 RoleRun；锁定内容变化或超出重试范围时必须新建 Run。v0.1 中一个 Task 同时最多只有一个活动 Run，Executor 与 Verifier 不并发且不共享 Pi Session。
+
 仍需依次确认其余合法状态转换及门禁、Approval 的撤回与失效等异常生命周期、RunManifest 字段和封存规则、持久化方案、并发与中断恢复语义，以及第 3 步的完整验收条件。详细讨论记录见 [`docs/design/control-plane-state-and-run-manifest.md`](../docs/design/control-plane-state-and-run-manifest.md)。
 
 ### 第 2 步实际结果
