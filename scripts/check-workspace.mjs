@@ -70,9 +70,17 @@ if (await exists(packagesPath)) {
 
 for (const path of ["AGENTS.md", "README.md", "roadmap/README.md", "package.json", "pnpm-workspace.yaml"]) {
   const content = await readFile(join(root, path), "utf8");
-  for (const staleTerm of ["$DSH_HOME", "dsh.profile", "packages/bundle", "packages/plugin"]) {
+  for (const staleTerm of [
+    "$DSH_HOME",
+    "dsh.profile",
+    "packages/bundle",
+    "packages/plugin",
+    "Spring Boot",
+    "Maven",
+    "src/main/java",
+  ]) {
     if (content.includes(staleTerm)) {
-      errors.push(`${path} contains superseded DeepSeek Harness implementation term: ${staleTerm}`);
+      errors.push(`${path} contains superseded implementation term: ${staleTerm}`);
     }
   }
 }

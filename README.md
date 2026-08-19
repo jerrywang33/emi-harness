@@ -238,48 +238,61 @@ emi-harness/
 
 Pi Session 与 EMI Control Plane 通过 Run ID、Role Run ID、Session ID 和制品哈希关联。Control Plane 中的结构化状态和证据引用是运行事实来源，目标项目 Evidence Package 是可供交付、审计和复现的导出结果，Pi Session 不代替二者。访问控制、脱敏和保留期限由 EMI Control Plane、Tool Gateway 与部署环境共同执行。
 
-## 目标项目的技术栈与结构
+## v0.1 技术栈与项目结构
 
-EMI Harness 自身的运行技术栈与目标 EMI 应用的技术栈相互独立。Harness Runtime 满足已锁定 Pi 版本的兼容要求；目标项目根据业务形态、风险和现有环境选择技术栈与项目结构，不由 EMI Harness 强制采用同一种语言、框架或模块数量。
+v0.1 中，EMI Harness 和用于校准的目标 EMI 应用统一使用 TypeScript。这样可以直接复用 Pi 类型、JSON Schema、测试工具和工程脚本，减少跨语言适配；两者仍保持独立的代码、进程、权限和状态边界，不能因为语言相同而共享运行权限或权威数据。
 
 ### 技术栈分层
 
-| 层次 | v0.1 候选基线 | 选型原则 |
+| 层次 | v0.1 基线 | 选型原则 |
 | --- | --- | --- |
-| **EMI Harness Runtime** | [Pi Agent Harness](https://github.com/earendil-works/pi-mono)、Node.js 24 LTS、TypeScript、pnpm | 精确锁定经过验证的 Pi 包版本，只通过 `PiRuntimePort` 与适配层使用。 |
+| **基础运行时与语言** | [Node.js 24 LTS](https://nodejs.org/en/about/previous-releases)、[TypeScript `strict`](https://www.typescriptlang.org/tsconfig/strict)、pnpm | Harness 与校准项目使用同一套工具链；Node.js、TypeScript 和依赖版本必须在具体项目中锁定并受控升级。 |
+| **Agent Runtime** | [Pi Agent Harness](https://github.com/earendil-works/pi-mono) | 精确锁定经过验证的 Pi 包版本，只通过 `PiRuntimePort` 与适配层使用。 |
 | **EMI 领域资产** | Markdown、YAML、JSON Schema、Git | 优先采用可审查、可版本化和可比较的开放格式；检索索引不能代替权威源文件。 |
-| **Java 项目默认技术栈** | Java 25 LTS、Spring Boot 4.1.x、Maven 3.9.x 与 Maven Wrapper | 精确版本在具体项目中锁定并通过受控变更升级，不在顶层规则中永久写死补丁版本。 |
-| **模块与测试** | Spring Modulith、ArchUnit、JUnit、Testcontainers | 先验证业务模块边界，再根据真实部署需求决定是否拆分物理模块或服务。 |
+| **服务与接口契约** | [Fastify](https://fastify.dev/docs/latest/)、JSON Schema、OpenAPI | 只在需要 HTTP 接口时引入；输入验证、输出序列化和接口文档使用同一份受控 Schema。 |
+| **测试与模块边界** | Vitest、Testcontainers、静态依赖边界检查 | 单元、集成、契约和验收测试分层；CI 必须阻止跨业务模块的未授权依赖。 |
 | **数据与可观测性** | PostgreSQL 18、受控数据库迁移、OpenTelemetry | PostgreSQL 作为事务数据的默认候选；最终选择和数据拓扑由具体 SDD 决定。 |
 | **按需基础设施** | Kafka、Redis、搜索引擎及其他中间件 | 只有在 SDD 明确使用场景、失效策略和验收方式后才能引入。 |
 
-### 默认 Java 项目结构：`java-spring-modulith`
+### 默认 TypeScript 项目结构：`typescript-modular-monolith`
 
-新建 Java EMI 应用默认先按业务能力形成模块化单体，而不是按技术层建立固定数量的 Maven 子模块。Account、Ledger、Payment、Safeguarding、Compliance 等是可能的业务模块，实际模块由当前系统的领域边界决定。
+新建 TypeScript EMI 应用默认先按业务能力形成模块化单体，而不是先拆分多个服务或按技术层组织整个项目。Account、Ledger、Payment、Safeguarding、Compliance 等是可能的业务模块，实际模块由当前系统的领域边界决定。
 
 ```text
 {system}/
-└── src/main/java/{base-package}/
-    ├── {business-capability-a}/
-    │   ├── domain/
-    │   ├── application/
-    │   └── adapter/
-    │       ├── in/
-    │       └── out/
-    ├── {business-capability-b}/
-    │   ├── domain/
-    │   ├── application/
-    │   └── adapter/
-    └── Application.java
+├── package.json
+├── tsconfig.json
+├── src/
+│   ├── capabilities/
+│   │   ├── {business-capability-a}/
+│   │   │   ├── domain/
+│   │   │   ├── application/
+│   │   │   ├── adapters/
+│   │   │   │   ├── inbound/
+│   │   │   │   └── outbound/
+│   │   │   └── index.ts
+│   │   └── {business-capability-b}/
+│   │       ├── domain/
+│   │       ├── application/
+│   │       ├── adapters/
+│   │       └── index.ts
+│   └── main.ts
+└── test/
+    ├── integration/
+    └── acceptance/
 ```
 
-- `domain` 保存业务模型和规则，不依赖应用编排、外部适配器或具体基础设施实现。
+- TypeScript 必须开启 `strict`；关闭具体严格检查需要记录原因并经过评审。
+- 所有外部输入必须经过运行时 Schema 校验；TypeScript 编译期类型不能作为输入已经可信的证明。
+- 金额不得直接使用 JavaScript `number`。领域层必须定义显式 `Money` 类型，并由 SDD 选择整数最小单位或十进制定点表示，同时覆盖币种、精度、舍入和序列化测试。
+- `domain` 保存业务模型和规则，不依赖 Fastify、数据库客户端或其他基础设施实现。
 - `application` 编排用例并定义所需端口，不直接依赖外部系统实现。
-- `adapter/in` 接收 REST、消息或调度等外部输入，`adapter/out` 实现数据库、消息和外部服务接入。
-- 业务模块只通过明确公开的契约协作，Spring Modulith 与 ArchUnit 持续验证模块和依赖边界。
-- 单元测试和模块集成测试跟随所属业务模块，跨系统验收测试在 SDD 明确需要时单独组织。
+- `adapters/inbound` 接收 HTTP、消息或调度等外部输入，`adapters/outbound` 实现数据库、消息和外部服务接入。
+- 每个业务模块只通过 `index.ts` 公开稳定契约，静态检查持续验证模块依赖方向。
+- 单元测试跟随所属代码放置，跨模块集成测试和跨系统验收测试分别保存在 `test/integration` 与 `test/acceptance`。
+- `main.ts` 只负责组合模块、适配器和运行配置，不承载业务规则。
 
-只有出现独立发布、独立部署、团队所有权、安全隔离或显著不同的扩缩容需求时，才将业务模块拆成 Maven 模块或独立服务。`client`、`common`、`test` 和 `start` 等技术模块按真实需要创建，不作为固定模板；其中 `common` 不得承载业务概念。
+只有出现独立发布、独立部署、团队所有权、安全隔离或显著不同的扩缩容需求时，才将业务模块拆成独立 workspace package 或服务。不得创建承载多个业务概念的通用 `common` 或 `shared` 模块；真正通用且稳定的技术能力按实际需要独立提取。
 
 ## 当前阶段
 

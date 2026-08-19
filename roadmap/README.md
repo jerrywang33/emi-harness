@@ -20,7 +20,7 @@
 | 4 | 实现最小 Controlled EMI Resources | 一条带权威来源、版本、适用范围、状态和哈希的 EMI Context，一个受控 Skill，以及读取和校验方式 | 待开始 |
 | 5 | 实现最小 Tool Gateway 与隔离执行边界 | 一个带权限决策、操作意图、幂等键、执行结果和中断后对账的可测试工具调用 | 待开始 |
 | 6 | 实现 Executor、Verifier 与最小验证证据 | 独立 Pi Sessions、失败回流、人工批准点，以及不能由 Executor 自行宣布通过的检查 | 待开始 |
-| 7 | 接入本地 Git 目标项目并执行完整任务 | 可重复运行的设计到交付过程、失败恢复和完整 Evidence Package | 待开始 |
+| 7 | 接入本地 TypeScript 目标项目并执行完整任务 | 可重复运行的设计到交付过程、失败恢复和完整 Evidence Package | 待开始 |
 | 8 | 用户验收并决定 v0.2 | 验收结论、实际问题和下一阶段范围 | 待开始 |
 
 下一步只执行第 2 步。在 Pi SDK 的 ResourceLoader、工具白名单、Session 事件和中断行为得到实际验证前，不同时创建其他目标包或占位实现。
@@ -38,12 +38,12 @@
 
 ## 本阶段不做
 
-- 不迁移或兼容旧版文件路径、Workflow、Skill 和 8 模块 Java 验证项目。
+- 不迁移或兼容旧版文件路径、Workflow、Skill 和 8 模块验证项目。
 - 不建设 Harness 自动修改自身规则的进化机制。
 - 不接入生产数据、生产凭据或客户信息。
 - 不 fork Pi，不依赖 Pi 尚未完成的新 `AgentHarness`，不把 Pi Session 当成 EMI 任务或证据账本。
 - 不提前引入 Kafka、Redis、搜索引擎、工单系统等非必要组件。
-- 不同时支持多套运行时或多种目标应用技术栈。
+- 不同时支持多套运行时或 TypeScript 之外的目标应用技术栈。
 
 ## 维护规则
 

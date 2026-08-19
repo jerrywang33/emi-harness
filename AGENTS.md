@@ -23,6 +23,7 @@
 ## 开发规则
 
 - EMI 代码只能通过 `PiRuntimePort` 调用 Pi，不得跨过 `runtime-pi` 导入 Pi 内部类型或把工作流写入 Agent Loop。
+- v0.1 的 Harness 实现、测试和校准目标项目统一使用 Node.js、TypeScript 与 pnpm，不引入 Java 构建链或 Java 项目模板。
 - 受控运行必须注入自建 ResourceLoader 和精确工具白名单，不得依赖 Pi 默认项目资源发现或默认有副作用的内置工具。
 - Pi Session 是 Agent 工作记录，不是 EMI 任务状态、审批、工具操作或正式证据的权威来源。
 - 不为凑目录创建空包或占位实现。每个包必须有明确用途、输入、输出、配置、测试和使用方。
