@@ -26,7 +26,7 @@ Task
 | --- | --- |
 | **Task** | 表示一个用户交付目标，保存当前阶段、当前版本和最终结果。 |
 | **TaskTransition** | 追加记录状态变化、操作者、原因以及审批和证据引用。 |
-| **Approval** | 记录 Human Authority 对一个确定标识、版本和哈希的对象作出的决定。 |
+| **Approval** | 保存绑定确定对象标识、版本和哈希的待审批请求，以及 Human Authority 作出的决定。 |
 | **RunManifest** | 锁定一次受控运行使用的任务版本、角色、Runtime、资源、工具、策略、目标仓库基线和审批。 |
 | **RoleRun** | 记录某个角色的一次实际执行或重试，并关联 Pi Session 和运行结果。 |
 
@@ -120,6 +120,42 @@ contextualizing -> drafting_trd
 本转换不额外要求一次笼统审批，但所有需要人工判断的内容必须已经具有有效确认依据。Agent 可以整理 EMI Context，不能确认监管结论；Control Plane 只接受满足上述门禁的 ContextManifest。
 
 Control Plane 必须在同一事务中校验 Task、PRD 和 ContextManifest 的版本与摘要，确认阻塞事项为零，将 ContextManifest 绑定到 Task，将状态更新为 `drafting_trd` 并增加 Task 版本，然后追加包含 ContextManifest 和确认依据引用的 TaskTransition。ContextManifest 校验失败、PRD 已变化或存在阻塞事项时不写入任何状态变化。
+
+### `submit_trd_for_approval`
+
+```text
+drafting_trd -> awaiting_trd_approval
+```
+
+这条转换表示 TRD 已达到可审批状态并封存，正在等待 Human Authority 对这个确定版本作出决定。
+
+TRD 不采用固定章节数量，但至少必须覆盖：
+
+- **身份与输入**：TRD ID、版本，以及 Task、PRD 和 ContextManifest 的 ID、版本与 SHA-256。
+- **范围与结果**：目标、范围、不做什么、涉及的系统或模块、假设和限制。
+- **技术设计**：系统行为、领域模型、状态、数据、接口、组件关系和关键技术决定。
+- **控制与追溯**：每项 PRD 需求和 EMI Context 控制如何落实；不适用项必须说明理由。
+- **验证与交付**：可执行的验收条件、测试方式、失败处理、迁移、发布和回滚要求。
+- **风险与待决项**：风险、已知限制、非阻塞待确认项、责任人和所需审批角色。
+
+小任务可以简化篇幅，但不能省略必要信息；不适用部分必须标记 `N/A` 并说明原因。
+
+转换前必须满足：
+
+- Task 当前状态是 `drafting_trd`，请求携带与当前 Task 一致的 `expectedTaskVersion`。
+- TRD 绑定的 PRD 和 ContextManifest 仍是 Task 当前版本。
+- TRD 已通过结构、必填字段和引用完整性检查。
+- 每项范围内 PRD 需求都能追溯到技术设计和验收条件。
+- 每项适用 EMI 控制都能追溯到技术控制和验证方式。
+- 不存在阻塞的技术决定或待确认事项。
+- 当前风险等级已经根据有效策略解析出所需审批角色。
+- TRD 已持久化、封存并生成 SHA-256；提交后不允许原地修改。
+
+确定性 Schema 和引用检查只能证明结构与追溯关系完整，不能证明设计正确。设计正确性必须由后续 Human Authority 审批和 Verifier 检查。
+
+Control Plane 必须在同一事务中校验 Task、PRD、ContextManifest 和 TRD，创建绑定 TRD ID、版本和摘要的 `pending` Approval，将 Task 状态更新为 `awaiting_trd_approval` 并增加版本，然后追加 TaskTransition。待审批记录至少包含 Approval ID、Task ID、`trd_approval` 门禁类型、被审批对象类型、ID、版本、摘要、要求的审批角色、审批策略版本、请求者、请求时间和 `pending` 状态。
+
+同一个 TRD 摘要只能存在一个有效的待审批请求。TRD 内容发生任何变化时，当前请求失效，必须生成新版本和摘要后重新提交。Agent 可以起草并请求提交，但不能批准自己的 TRD。外部审批系统通知在事务提交后执行；通知失败不回滚权威审批请求，而是保留待发送状态并安全重试。
 
 ## 待确认问题
 

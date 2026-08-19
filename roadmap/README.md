@@ -35,6 +35,8 @@
 
 已确认 `complete_contextualization` 负责将 Task 从 `contextualizing` 推进到 `drafting_trd`。进入技术设计前必须封存与当前 PRD 对应的 ContextManifest，所有适用性和监管解释都有有效确认依据，并且不存在阻塞事项；Agent 只能整理上下文，不能自行确认监管结论或降低问题等级。
 
+已确认 `submit_trd_for_approval` 负责将 Task 从 `drafting_trd` 推进到 `awaiting_trd_approval`。TRD 必须覆盖输入绑定、范围、设计、控制追溯、验证和风险，完成确定性完整性检查并封存；Control Plane 在同一事务中创建绑定 TRD 版本与摘要的待审批请求和状态转换，Agent 不能批准自己的设计。
+
 仍需依次确认合法状态转换及门禁、Approval 语义、RunManifest 字段和封存规则、持久化方案、并发与中断恢复语义，以及第 3 步的完整验收条件。详细讨论记录见 [`docs/design/control-plane-state-and-run-manifest.md`](../docs/design/control-plane-state-and-run-manifest.md)。
 
 ### 第 2 步实际结果
