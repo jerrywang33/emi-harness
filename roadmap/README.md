@@ -43,7 +43,9 @@ v0.1 的设计是供真实项目验证的受控基线，不以一次性覆盖所
 
 已确认 Run 表示一个已批准 TRD 版本在固定输入、权限和代码基线下获得授权的一次交付尝试。一个 Run 对应一个不可变 RunManifest，并可包含多个独立 RoleRun；锁定内容变化或超出重试范围时必须新建 Run。v0.1 中一个 Task 同时最多只有一个活动 Run，Executor 与 Verifier 不并发且不共享 Pi Session。
 
-仍需依次确认其余合法状态转换及门禁、Approval 的撤回与失效等异常生命周期、RunManifest 字段和封存规则、持久化方案、并发与中断恢复语义，以及第 3 步的完整验收条件。详细讨论记录见 [`docs/design/control-plane-state-and-run-manifest.md`](../docs/design/control-plane-state-and-run-manifest.md)。
+已确认 RunManifest V1 只锁定执行输入、目标代码基线、Runtime、角色能力、策略限制和验证要求。所有引用必须版本化并带摘要，凭据只记录绑定引用，运行状态和输出不进入 Manifest；Manifest 自身的 Run Authorization Approval 保存在外部并绑定 Manifest 摘要，避免循环依赖。
+
+仍需依次确认其余合法状态转换及门禁、Approval 的撤回与失效等异常生命周期、RunManifest 生成与封存流程、Run 和 RoleRun 状态、持久化方案、并发与中断恢复语义，以及第 3 步的完整验收条件。详细讨论记录见 [`docs/design/control-plane-state-and-run-manifest.md`](../docs/design/control-plane-state-and-run-manifest.md)。
 
 ### 第 2 步实际结果
 

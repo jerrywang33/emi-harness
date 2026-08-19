@@ -69,6 +69,129 @@ v0.1 的并发边界如下：
 - Executor 与 Verifier 不得同时执行，也不得共享 RoleRun 或 Pi Session。
 - 后续需要并行 Executor 时，必须由新版本 RunManifest 明确声明，不能由 Agent 临时扩展。
 
+## 已确认的 RunManifest V1
+
+RunManifest 只保存本次执行获准使用的输入、能力和限制。运行状态、输出、证据和秘密值不进入 Manifest。
+
+```ts
+type VersionedRef = {
+  id: string;
+  version: string;
+  digest: string;
+};
+
+type ApprovalCondition = {
+  conditionId: string;
+  description: string;
+  owner: string;
+  requiredBefore: "planning" | "execution" | "acceptance";
+  verificationMethod: string;
+  evidenceRefs: string[];
+};
+
+type RunManifestV1 = {
+  schemaVersion: "1";
+  runId: string;
+  composedAt: string;
+  composedBy: string;
+
+  task: {
+    taskId: string;
+    taskRevision: number;
+  };
+
+  inputs: {
+    prd: VersionedRef;
+    contextManifest: VersionedRef;
+    trd: VersionedRef;
+    executionPlan: VersionedRef;
+    prerequisiteApprovals: VersionedRef[];
+  };
+
+  target: {
+    repositoryId: string;
+    baseCommit: string;
+    approvedPatch?: VersionedRef;
+    allowedPaths: string[];
+  };
+
+  runtime: {
+    harnessCommit: string;
+    adapter: VersionedRef;
+    piPackages: VersionedRef[];
+    environment: VersionedRef;
+  };
+
+  roles: RolePlan[];
+
+  policies: {
+    policyRefs: VersionedRef[];
+    approvalConditions: ApprovalCondition[];
+    maxRoleRuns: number;
+    maxDurationMs: number;
+  };
+
+  verification: {
+    acceptanceCriteria: VersionedRef;
+    requiredChecks: VersionedRef[];
+    requiredEvidence: string[];
+  };
+};
+```
+
+每个 RolePlan 锁定一个角色能够使用的能力：
+
+```ts
+type RolePlan = {
+  rolePlanId: string;
+  role: "coordinator" | "executor" | "verifier";
+
+  model: {
+    provider: string;
+    modelId: string;
+    thinkingLevel?: string;
+  };
+
+  resources: VersionedRef[];
+  skills: VersionedRef[];
+  prompts: VersionedRef[];
+
+  tools: {
+    name: string;
+    version: string;
+    definitionDigest: string;
+    policyRef: VersionedRef;
+  }[];
+
+  isolationProfile: VersionedRef;
+
+  credentialBindings: {
+    bindingId: string;
+    provider: string;
+    scopes: string[];
+  }[];
+
+  limits: {
+    maxAttempts: number;
+    timeoutMs: number;
+  };
+};
+```
+
+字段规则如下：
+
+- 所有资源、Skill、Prompt、Policy、工具定义和环境配置都必须具有确定版本和摘要。
+- 目标仓库基线必须使用固定 commit，不能只记录可移动的 branch。未提交代码必须拒绝，或者先封存为带摘要的 `approvedPatch`。
+- `credentialBindings` 只保存凭据引用和授权范围，不保存 API Key、令牌、密码或环境变量明文。
+- 本地绝对路径不进入 Manifest；Integration 将 `repositoryId` 解析到受控工作区。
+- Executor 与 Verifier 使用不同 RolePlan、工具权限和 Pi Session。
+- Manifest 记录模型 Provider、模型 ID 和参数，但不宣称能够复现远程模型的具体输出。
+- Manifest 使用确定性 JSON 序列化计算 SHA-256；摘要保存在 Run 记录中。Manifest 封存后不提供更新接口，任何字段变化都创建新 Run。
+
+Pi Session ID、开始与结束时间、运行状态、Agent 消息或推理、代码差异、输出提交、测试结果、工具调用与结果、Verifier 结论、用户验收和 RoleRun 实际重试次数属于运行事实、输出或证据，不进入 RunManifest。
+
+RunManifest 可以包含 TRD 等前置 Approval 引用，但授权执行该 Manifest 的 Run Authorization Approval 不能进入 Manifest，否则会形成审批引用依赖 Manifest 摘要、Manifest 摘要又包含审批引用的循环。Run Authorization Approval 保存在 RunManifest 外部并绑定其摘要；只有它满足门禁后，Control Plane 才能创建可执行 RoleRun。
+
 ## 已确认的 Task 状态
 
 | 状态 | 含义 |
@@ -216,7 +339,7 @@ Control Plane 记录决定时必须校验审批人身份与角色、Approval 版
 
 1. 其余合法状态转换、每次转换所需的输出与门禁，以及阻塞后的恢复规则。
 2. Approval 请求撤回、超时失效和批准后撤销如何生效。
-3. Run、RunManifest 和 RoleRun 的字段、版本及封存时机。
+3. RunManifest 的生成与封存时机，以及 Run 和 RoleRun 的字段、状态与版本。
 4. 持久化数据库、事务边界、迁移方式和并发控制。
 5. Agent 启动、运行和完成各阶段发生进程中断时的恢复与对账语义。
 6. 第 3 步的自动化验收条件。

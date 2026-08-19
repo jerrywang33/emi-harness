@@ -240,7 +240,11 @@ PRD、ContextManifest、TRD、目标仓库基线、Runtime、模型、角色、�
 
 ### 运行清单
 
-每次受控运行都在启动 Agent 前形成不可随运行修改的 RunManifest，至少记录 Run ID、Task ID 与版本、各角色配置、Pi 与 Adapter 版本、资源版本与哈希、工具白名单、策略版本、目标仓库与基线提交、必要的审批引用。Manifest 使用确定性序列化和 SHA-256 生成摘要，审批必须绑定这一确定版本和摘要；摘要用于发现内容变化，不等同于数字签名或存储安全证明。
+每次受控运行都在启动 Agent 前形成不可随运行修改的 RunManifest。它只保存本次执行获准使用的输入、能力和限制，至少包括 Task 与 Run 标识，PRD、ContextManifest、TRD、执行计划和前置审批引用，目标仓库基线，Harness、Pi 与 Adapter 版本，各角色的模型、资源、Skills、Prompts、精确工具白名单和隔离配置，以及策略、限制、验收标准和证据要求。所有可变输入都必须使用确定版本和 SHA-256 引用。
+
+Manifest 不保存 Pi Session、运行状态、Agent 推理、代码输出、工具结果、验证结论或用户验收，也不保存 API Key、令牌、密码和环境变量明文。凭据只能记录不含秘密值的绑定引用与授权范围；目标仓库使用固定 commit，未提交变更必须拒绝或先封存为带摘要的已批准 Patch；本地绝对路径不进入 Manifest。
+
+Manifest 使用确定性 JSON 序列化和 SHA-256 生成摘要，摘要保存在 Run 记录中；摘要用于发现内容变化，不等同于数字签名或存储安全证明。RunManifest 可以包含 TRD 等前置审批引用，但授权执行该 Manifest 的 Run Authorization Approval 必须保存在 Manifest 外并绑定其摘要，避免 Manifest 与自身审批形成循环依赖。
 
 Manifest 封存并获得所需批准后，Control Plane 才能创建 RoleRun。每次角色执行或重试都有独立的 Role Run ID，并记录角色、尝试次数、Pi Session ID、开始和结束时间以及运行结果。运行中需要改变任何已锁定内容时，必须停止当前运行并生成新的 Run ID 和 Manifest，不允许 Agent 自行扩权、替换资源或修改运行基线。
 
