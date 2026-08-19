@@ -51,16 +51,27 @@ Pi 提供模型适配、单 Agent 循环、工具调用协议和工作上下文�
 
 - **通用 AI Agent 无法直接满足 EMI 研发要求**：通用 Agent 缺少经过治理的权威知识、明确的适用边界、金融级工程约束和独立验证机制，可能放大过期规则、错误解释和无证据结论，无法稳定完成 EMI 系统从设计到交付的可靠性、合规性与可审计性要求。
 
+## 关键名词
+
+| 名词 | 含义 | 在 EMI Harness 中的作用 |
+| --- | --- | --- |
+| **PRD** | Product Requirements Document，产品需求文档。 | 说明业务目标、用户需求、范围、业务规则和业务验收标准，回答“为什么做、要解决什么问题”。 |
+| **EMI Context** | 当前任务适用的受治理 EMI 上下文。 | 记录司法辖区、业务场景、法规与内部政策来源、版本、适用性、已确认解释和待确认事项，回答“本次设计必须遵守什么”。 |
+| **TRD** | Technical Requirements & Design Document，技术需求与设计文档，简称技术设计文档。 | 将 PRD 与 EMI Context 转化为系统行为、技术方案、工程约束和技术验收标准，回答“系统具体如何实现和验证”。 |
+| **RunManifest** | 一次受控运行的不可变运行清单。 | 锁定执行已批准 TRD 时使用的任务版本、角色、Runtime、资源、工具、策略、目标仓库基线和审批引用，回答“本次按什么固定条件执行”。 |
+
+PRD、EMI Context、TRD 和 RunManifest 不是同一份文档的不同名称。它们分别保存需求、适用约束、技术设计和执行配置，并通过版本、哈希和审批引用建立追溯关系。
+
 ## EMI Harness 如何工作
 
-每项研发任务都从用户目标开始，而不是直接让 Agent 编写代码。Coordinator 先确定业务场景、司法辖区和任务所需的 EMI Context，再形成包含范围、规则、控制要求和验收标准的 SDD。用户确认后，EMI Control Plane 生成本次运行清单，锁定 Pi 版本、角色、资源、工具、策略和目标仓库状态。Pi Runtime Adapter 只使用运行清单允许的上下文和工具执行当前角色的工作。
+每项研发任务都从用户目标和 PRD 开始，而不是直接让 Agent 编写代码。Coordinator 先确定业务场景、司法辖区和任务所需的 EMI Context，再形成包含系统行为、技术方案、控制要求和验收标准的 TRD。用户确认后，EMI Control Plane 生成本次 RunManifest，锁定 Pi 版本、角色、资源、工具、策略和目标仓库状态。Pi Runtime Adapter 只使用 RunManifest 允许的上下文和工具执行当前角色的工作。
 
 ```mermaid
 flowchart LR
-    goal["用户目标"] --> context["识别适用的<br/>EMI Context"]
-    context --> sdd["形成 SDD<br/>与验收标准"]
-    sdd --> approve["用户确认"]
-    approve --> compose["生成运行清单<br/>锁定资源与权限"]
+    goal["用户目标与 PRD"] --> context["识别适用的<br/>EMI Context"]
+    context --> trd["形成 TRD<br/>与验收标准"]
+    trd --> approve["用户确认"]
+    approve --> compose["生成 RunManifest<br/>锁定资源与权限"]
     compose --> execute["Control Plane 与 Pi Agent<br/>执行任务"]
     execute --> verify["独立 Verification<br/>检查结果"]
     verify -->|无法确定或高风险| human["人工判断"]
@@ -68,7 +79,7 @@ flowchart LR
     verify -->|PASS| accept["用户验收"]
     accept --> close["关闭任务<br/>封存 Evidence Package"]
     verify -. 上下文缺口 .-> context
-    verify -. 规格缺口 .-> sdd
+    verify -. 技术设计缺口 .-> trd
     verify -. 实现问题 .-> execute
 ```
 
@@ -93,9 +104,9 @@ EMI Harness 定义必须被履行的职责，不固定 Agent 数量或协作拓�
 
 | 职责 | 责任边界 | 实现方式 |
 | --- | --- | --- |
-| **Coordinator** | 管理目标、SDD、任务、运行状态、角色交接、失败回流和人工升级，不代替 Executor 实现代码或代替用户作出高风险决定。 | Control Plane，按需调用 Coordinator Agent 或确定性逻辑。 |
+| **Coordinator** | 管理目标、TRD、任务、运行状态、角色交接、失败回流和人工升级，不代替 Executor 实现代码或代替用户作出高风险决定。 | Control Plane，按需调用 Coordinator Agent 或确定性逻辑。 |
 | **Executor** | 根据已确认的任务和约束完成设计、代码、测试及自检，并提交可供独立验证的结果。 | 执行 Agent，可按任务拆分多个实例。 |
-| **Verifier** | 基于 SDD、完整变更和客观证据独立判断 PASS 或 FAIL，不采信 Executor 的完成声明。 | 独立 Agent 与确定性验证工具。 |
+| **Verifier** | 基于 TRD、完整变更和客观证据独立判断 PASS 或 FAIL，不采信 Executor 的完成声明。 | 独立 Agent 与确定性验证工具。 |
 | **Human Authority** | 确认监管解释、重大架构决策、例外处理、风险接受和最终验收，对相应决定承担责任。 | 具备授权的业务、合规、风险、架构或交付负责人。 |
 
 Explore、Test、Regulatory Review、Security Review、Architecture Review 和 Data Protection Review 等不是固定角色。它们根据任务需要表现为 Skill、Tool、独立 Agent 或人工检查，由 Control Plane 在运行清单允许的边界内组织。
@@ -104,7 +115,7 @@ Explore、Test、Regulatory Review、Security Review、Architecture Review 和 D
 
 - 每个角色只获得履行当前职责所需的上下文、工具和操作权限。
 - 完整运行状态和证据持续保存，提供给角色的模型上下文则根据当前任务和职责按需投影。
-- Verifier 从 SDD、代码差异、验证规则和原始证据独立建立判断，不继承 Executor 的推理结论。
+- Verifier 从 TRD、代码差异、验证规则和原始证据独立建立判断，不继承 Executor 的推理结论。
 - 角色之间通过持久化的任务状态、报告和证据交接，不依赖隐含的共享对话或口头完成声明。
 
 ## 任务生命周期与状态机
@@ -126,7 +137,7 @@ Task 保存当前状态和版本，TaskTransition 保存完整变化历史，两
 ```mermaid
 flowchart TD
     intake["intake<br/>接收目标"] --> contextualize["contextualize<br/>确定适用上下文"]
-    contextualize --> specify["specify<br/>形成 SDD"]
+    contextualize --> specify["specify<br/>形成 TRD"]
     specify --> approve["approve<br/>人工确认"]
     approve -->|批准| plan["plan<br/>分解任务并组合能力"]
     approve -->|要求修订| specify
@@ -150,7 +161,7 @@ flowchart TD
 | --- | --- | --- |
 | **`intake`** | 用户 / Coordinator | 用户目标、初步范围、期望结果和初始风险等级。 |
 | **`contextualize`** | Coordinator，按需调用领域能力 | 适用司法辖区、业务场景、权威来源、规则版本及待确认事项。 |
-| **`specify`** | Coordinator | 包含范围、业务规则、技术设计、控制要求和验收标准的 SDD。 |
+| **`specify`** | Coordinator | 包含系统行为、技术方案、控制要求和验收标准的 TRD。 |
 | **`approve`** | Human Authority | 对范围、高风险事项和验收标准作出的批准、附条件批准或退回结论。 |
 | **`plan`** | Coordinator / Control Plane | 可独立验证的任务清单，以及锁定 Pi 版本、角色、资源、Skills、Tools、Policies 和目标仓库状态的运行清单。 |
 | **`execute`** | Executor | 代码、配置、测试变更及运行清单要求的自检证据。 |
@@ -161,7 +172,7 @@ flowchart TD
 
 ### 回流与终止规则
 
-- 实现与自检问题返回 `execute`；上下文、监管解释或 SDD 缺口返回 `contextualize` 或 `specify`，并重新经过必要审批。
+- 实现与自检问题返回 `execute`；上下文、监管解释或 TRD 缺口返回 `contextualize` 或 `specify`，并重新经过必要审批。
 - 无法确定的语义判断、高风险决定和例外处理必须升级给 Human Authority，不允许 Agent 通过重试自行形成事实。
 - 自动重试达到当前策略规定的上限后进入 `blocked`，保存当前状态、失败证据和恢复条件并停止自动执行。
 - `blocked` 是可恢复的暂停状态，不是完成状态。它只能在外部条件满足且 Human Authority 记录恢复依据和目标状态后恢复；用户终止任务时以 `cancelled` 结果进入 `close` 并保留已有证据。
@@ -248,7 +259,7 @@ emi-harness/
 | **EMI Harness 源代码仓库** | 控制面、Pi 适配、受治理资源、工具策略、Verifiers、Schema、模板和测试。 | 具体目标项目的完整运行记录、生产凭据或客户数据。 |
 | **EMI Control Plane 与 Evidence Store** | 任务状态、运行清单、审批、角色交接、工具操作意图与结果、验证结论和证据索引。 | 明文凭据、不必要的模型推理或未脱敏客户数据。 |
 | **Pi Session Storage** | 模型可见输入、Agent 消息、工具调用结果和工作上下文，用于 Agent 工作记录和必要恢复。 | 权威任务状态、风险接受或目标项目的正式交付结论。 |
-| **目标项目 Evidence Package** | SDD、Context Manifest、审批、任务计划、代码提交、验证结果、最终验收及对应 Run ID、Session ID 和制品哈希。 | Harness 全局规则的私有副本或不受控的模型推理文本。 |
+| **目标项目 Evidence Package** | PRD、TRD、Context Manifest、审批、任务计划、代码提交、验证结果、最终验收及对应 Run ID、Session ID 和制品哈希。 | Harness 全局规则的私有副本或不受控的模型推理文本。 |
 
 Pi Session 与 EMI Control Plane 通过 Run ID、Role Run ID、Session ID 和制品哈希关联。Control Plane 中的结构化状态和证据引用是运行事实来源，目标项目 Evidence Package 是可供交付、审计和复现的导出结果，Pi Session 不代替二者。访问控制、脱敏和保留期限由 EMI Control Plane、Tool Gateway 与部署环境共同执行。
 
@@ -265,8 +276,8 @@ v0.1 中，EMI Harness 和用于校准的目标 EMI 应用统一使用 TypeScrip
 | **EMI 领域资产** | Markdown、YAML、JSON Schema、Git | 优先采用可审查、可版本化和可比较的开放格式；检索索引不能代替权威源文件。 |
 | **服务与接口契约** | [Fastify](https://fastify.dev/docs/latest/)、JSON Schema、OpenAPI | 只在需要 HTTP 接口时引入；输入验证、输出序列化和接口文档使用同一份受控 Schema。 |
 | **测试与模块边界** | Vitest、Testcontainers、静态依赖边界检查 | 单元、集成、契约和验收测试分层；CI 必须阻止跨业务模块的未授权依赖。 |
-| **数据与可观测性** | PostgreSQL 18、受控数据库迁移、OpenTelemetry | PostgreSQL 作为事务数据的默认候选；最终选择和数据拓扑由具体 SDD 决定。 |
-| **按需基础设施** | Kafka、Redis、搜索引擎及其他中间件 | 只有在 SDD 明确使用场景、失效策略和验收方式后才能引入。 |
+| **数据与可观测性** | PostgreSQL 18、受控数据库迁移、OpenTelemetry | PostgreSQL 作为事务数据的默认候选；最终选择和数据拓扑由具体 TRD 决定。 |
+| **按需基础设施** | Kafka、Redis、搜索引擎及其他中间件 | 只有在 TRD 明确使用场景、失效策略和验收方式后才能引入。 |
 
 ### 默认 TypeScript 项目结构：`typescript-modular-monolith`
 
@@ -298,7 +309,7 @@ v0.1 中，EMI Harness 和用于校准的目标 EMI 应用统一使用 TypeScrip
 
 - TypeScript 必须开启 `strict`；关闭具体严格检查需要记录原因并经过评审。
 - 所有外部输入必须经过运行时 Schema 校验；TypeScript 编译期类型不能作为输入已经可信的证明。
-- 金额不得直接使用 JavaScript `number`。领域层必须定义显式 `Money` 类型，并由 SDD 选择整数最小单位或十进制定点表示，同时覆盖币种、精度、舍入和序列化测试。
+- 金额不得直接使用 JavaScript `number`。领域层必须定义显式 `Money` 类型，并由 TRD 选择整数最小单位或十进制定点表示，同时覆盖币种、精度、舍入和序列化测试。
 - `domain` 保存业务模型和规则，不依赖 Fastify、数据库客户端或其他基础设施实现。
 - `application` 编排用例并定义所需端口，不直接依赖外部系统实现。
 - `adapters/inbound` 接收 HTTP、消息或调度等外部输入，`adapters/outbound` 实现数据库、消息和外部服务接入。
