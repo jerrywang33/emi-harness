@@ -16,7 +16,7 @@
 | --- | --- | --- | --- |
 | 1 | 完成运行时选型，建立 Pi Runtime 与 EMI Control Plane 边界 | ADR 0002、一致的 README、Roadmap、仓库规则和 pnpm 工作区 | 已完成 |
 | 2 | 验证并锁定 Pi SDK 的受控嵌入契约 | 精确 Pi 版本、最小 `PiRuntimePort`、受控 ResourceLoader、精确工具白名单和事件转换验证 | 已完成 |
-| 3 | 实现最小持久化任务状态与运行清单 | 可恢复的任务状态、角色运行记录、人工门禁和版本化运行清单 | 待开始 |
+| 3 | 实现最小持久化任务状态与运行清单 | 可恢复的任务状态、角色运行记录、人工门禁和版本化运行清单 | 设计中 |
 | 4 | 实现最小 Controlled EMI Resources | 一条带权威来源、版本、适用范围、状态和哈希的 EMI Context，一个受控 Skill，以及读取和校验方式 | 待开始 |
 | 5 | 实现最小 Tool Gateway 与隔离执行边界 | 一个带权限决策、操作意图、幂等键、执行结果和中断后对账的可测试工具调用 | 待开始 |
 | 6 | 实现 Executor、Verifier 与最小验证证据 | 独立 Pi Sessions、失败回流、人工批准点，以及不能由 Executor 自行宣布通过的检查 | 待开始 |
@@ -24,6 +24,12 @@
 | 8 | 用户验收并决定 v0.2 | 验收结论、实际问题和下一阶段范围 | 待开始 |
 
 下一步只执行第 3 步，先定义最小任务状态、运行清单和持久化边界，再实现对应包；不同时创建其他目标包或占位实现。
+
+### 第 3 步设计进度
+
+已确认 Control Plane 使用 Task、TaskTransition、Approval、RunManifest 和 RoleRun 五类记录保存权威事实。Task 与 TaskTransition 在同一事务中记录当前状态和变化历史；Approval 必须绑定被审批对象的确定版本和哈希；RunManifest 封存后不可修改；RoleRun 负责关联实际角色执行和 Pi Session，Pi Session 不承担权威状态职责。
+
+仍需依次确认任务状态及合法转换、审批门禁、RunManifest 字段和封存规则、持久化方案、并发与中断恢复语义，以及第 3 步的完整验收条件。详细讨论记录见 [`docs/design/control-plane-state-and-run-manifest.md`](../docs/design/control-plane-state-and-run-manifest.md)。
 
 ### 第 2 步实际结果
 

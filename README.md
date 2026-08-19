@@ -111,6 +111,18 @@ Explore、Test、Regulatory Review、Security Review、Architecture Review 和 D
 
 每项任务都通过一组可持久化、可恢复的状态推进。状态表示已经形成的事实和证据，而不是某个 Agent 的对话阶段。Coordinator Agent 可以提出转换建议，确定性逻辑也可以发起转换，但只有 Control Plane 在校验门禁后能持久化新状态。
 
+Control Plane 使用以下五类记录保存权威事实，而不是从 Pi Session 或模型对话中推断：
+
+| 记录 | 用途 | 权威边界 |
+| --- | --- | --- |
+| **Task** | 保存一个用户交付目标、当前阶段、版本和最终结果。 | Control Plane 判断任务当前处于什么阶段的依据。 |
+| **TaskTransition** | 追加记录每次状态变化的原状态、目标状态、操作者、原因以及审批和证据引用。 | 与 Task 状态在同一事务中写入，形成不可省略的状态变化历史。 |
+| **Approval** | 记录 Human Authority 对确定版本对象作出的批准、附条件批准或退回决定。 | 必须绑定被审批对象的标识、版本和哈希；对象变化后原审批不能继续使用。 |
+| **RunManifest** | 锁定一次受控运行使用的任务版本、角色、Runtime、资源、工具、策略、目标仓库基线和审批引用。 | 封存后不可修改；任何已锁定内容变化都必须生成新的 Run 和 Manifest。 |
+| **RoleRun** | 记录某个角色的一次实际执行或重试，以及对应的 Pi Session 和运行结果。 | Pi Session 只关联 RoleRun，不代表 Task 状态或交付结论。 |
+
+Task 保存当前状态和版本，TaskTransition 保存完整变化历史，两者必须在同一个持久化事务中保持一致。Run 表示一次获得授权的受控执行，由不可变的 RunManifest 和一个或多个 RoleRun 组成；Executor 与 Verifier 必须使用不同的 RoleRun 和 Pi Session。
+
 ```mermaid
 flowchart TD
     intake["intake<br/>接收目标"] --> contextualize["contextualize<br/>确定适用上下文"]
@@ -200,7 +212,9 @@ flowchart LR
 
 ### 运行清单
 
-每次受控运行都在启动 Agent 前形成不可随运行修改的清单，至少记录 Run ID、任务和角色、Pi 与 Adapter 版本、资源版本与哈希、工具白名单、策略版本、目标仓库与提交、必要的审批引用。运行中需要改变任何已锁定内容时，必须停止当前运行并形成新清单，不允许 Agent 自行扩权或换用未批准资源。
+每次受控运行都在启动 Agent 前形成不可随运行修改的 RunManifest，至少记录 Run ID、Task ID 与版本、各角色配置、Pi 与 Adapter 版本、资源版本与哈希、工具白名单、策略版本、目标仓库与基线提交、必要的审批引用。Manifest 使用确定性序列化和 SHA-256 生成摘要，审批必须绑定这一确定版本和摘要；摘要用于发现内容变化，不等同于数字签名或存储安全证明。
+
+Manifest 封存并获得所需批准后，Control Plane 才能创建 RoleRun。每次角色执行或重试都有独立的 Role Run ID，并记录角色、尝试次数、Pi Session ID、开始和结束时间以及运行结果。运行中需要改变任何已锁定内容时，必须停止当前运行并生成新的 Run ID 和 Manifest，不允许 Agent 自行扩权、替换资源或修改运行基线。
 
 ### 目标源代码结构
 
