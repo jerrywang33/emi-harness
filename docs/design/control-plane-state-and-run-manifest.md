@@ -20,8 +20,10 @@ Task
 ├── Approval[]
 │   └── ApprovalDecision[]
 └── Run[]
+    ├── RunTransition[]
     ├── RunManifest
     └── RoleRun[]
+        ├── RoleRunTransition[]
         └── Pi Session ID
 ```
 
@@ -31,13 +33,16 @@ Task
 | **TaskTransition** | 追加记录状态变化、操作者、原因以及审批和证据引用。 |
 | **Approval** | 保存绑定确定对象标识、版本和哈希的待审批请求，并聚合所需 Human Authority 作出的决定。 |
 | **ApprovalDecision** | 追加记录一个 Human Authority 对该请求作出的决定、理由、条件和证据，不允许原地修改。 |
+| **Run** | 保存一次受控交付尝试的当前状态、版本、最终结果及其 Manifest 关联。 |
+| **RunTransition** | 追加记录 Run 每次被 Control Plane 接受的状态变化、原因和证据。 |
 | **RunManifest** | 锁定一次受控运行使用的任务版本、角色、Runtime、资源、工具、策略、目标仓库基线和审批。 |
 | **RoleRun** | 记录某个角色的一次实际执行或重试，并关联 Pi Session 和运行结果。 |
+| **RoleRunTransition** | 追加记录 RoleRun 每次被接受的状态变化以及当时有效的 fencing token。 |
 
 ## 已确认的不变量
 
-- Task 是判断当前任务阶段的依据，TaskTransition 是状态变化历史；两者必须在同一持久化事务中更新。
-- 状态变更必须检查调用方看到的 Task 版本，过期版本不能覆盖已经发生的更新。
+- Task、Run 和 RoleRun 当前记录分别是判断其当前状态的依据，对应 Transition 是追加式状态变化历史；当前记录和 Transition 必须在同一持久化事务中更新。
+- 状态变更必须检查调用方看到的对应当前记录版本，过期版本不能覆盖已经发生的更新。
 - Approval 必须绑定被审批对象的标识、版本和 SHA-256；对象内容变化后必须重新批准。
 - RunManifest 使用确定性序列化计算 SHA-256，封存后不提供修改能力；任何已锁定内容变化都生成新的 Run ID 和 Manifest。
 - Manifest 摘要只能帮助发现内容变化，不宣称能够代替数字签名、数据库权限或其他存储安全措施。
@@ -45,6 +50,16 @@ Task
 - 每次角色执行或重试使用独立 Role Run ID；Executor 与 Verifier 不能共享 RoleRun 或 Pi Session。
 - Pi Session ID 只用于关联 Agent 工作记录，不能改变 Task 状态、批准事项或交付结论。
 - 进程重启后必须仅依赖 Control Plane 持久化记录确定任务状态和恢复动作。
+
+## 已确认的状态变化记录边界
+
+TaskTransition、RunTransition 和 RoleRunTransition 采用同一组最小字段：Transition ID、所属记录 ID、Command ID 或内部 Event ID、原状态与新状态、原版本与新版本、操作者、原因代码、证据引用和发生时间。记录初次创建时，原状态和原版本为空；当前记录及其初始 Transition 必须在同一事务中生成。
+
+RoleRunTransition 额外记录该次变化使用的 `leaseToken`。初始 `prepared` 记录使用 `0` 表示尚未发放租约，任何 Runtime 写入或工具请求都不能使用它；首次取得租约后 token 才递增为有效值。Control Plane 只有在 token、当前状态和版本均有效时才更新 RoleRun 并追加 Transition；被拒绝的旧 token 写入进入安全日志，不得伪装成成功的状态变化。
+
+这些 Transition 只保存成功提交的权威状态变化，不是 Event Sourcing，也不保存所有 Pi Runtime 事件、模型消息、租约续期或工具调用。当前记录负责快速判断和恢复，Transition 负责解释状态如何形成；Pi 事件属于运行证据，工具副作用由后续 Tool Operation 账本记录。
+
+同一个业务动作同时改变多个当前记录时，所有当前记录及对应 Transition 必须原子提交。例如 Run Authorization 生效时，需要在一个事务中更新 Task 与 Run，并分别追加 TaskTransition 和 RunTransition。
 
 ## 已确认的 Run 边界
 
@@ -177,7 +192,7 @@ Pi 的 `runtimeOutcome = completed` 不等于 RoleRun `succeeded`。只有输出
 RoleRun 按以下顺序启动和结算：
 
 ```text
-事务：创建 prepared RoleRun
+事务：创建 prepared RoleRun 及初始 RoleRunTransition
 -> 事务：取得租约并改为 starting
 -> 创建 Pi Session
 -> 事务：保存 Session ID 并改为 running
@@ -341,7 +356,7 @@ RunManifest 可以包含 TRD 等前置 Approval 引用，但授权执行该 Mani
 
 Manifest 使用 RFC 8785 JSON Canonicalization Scheme 生成规范 JSON，以 UTF-8 编码计算 SHA-256，并按 `sha256:{lowercase hex}` 保存摘要。没有顺序语义的数组必须按 Schema 规定的稳定键排序。
 
-Control Plane 必须在同一事务中重新读取并校验所有权威引用，生成 Run ID 和最终 Manifest，保存规范 Manifest 与摘要，创建绑定该摘要的 `run_authorization` Approval，并记录 Run 正在等待授权。Task 状态保持 `planning`。同一 Command ID 重复提交时必须返回第一次封存结果，不能创建第二个 Run。
+Control Plane 必须在同一事务中重新读取并校验所有权威引用，生成 Run ID 和最终 Manifest，保存规范 Manifest 与摘要，创建绑定该摘要的 `run_authorization` Approval，并保存处于等待授权状态的 Run 及其初始 RunTransition。Task 状态保持 `planning`。同一 Command ID 重复提交时必须返回第一次封存结果，不能创建第二个 Run。
 
 ### Run Authorization
 
@@ -361,7 +376,7 @@ Run Authorization 不允许新增 `approved_with_conditions`。授权人提出�
 
 最后一个所需授权决定形成后，Control Plane 必须重新校验 Task、Run、Manifest 和 Approval 版本，PRD、ContextManifest、TRD 和前置审批有效性，目标仓库基线，所有 `execution` 前条件，资源、工具、策略、隔离和凭据绑定，以及同一 Task 没有其他活动 Run。
 
-全部通过后，Control Plane 在同一事务中记录 Run 已授权，将 Task 更新为 `executing` 并增加版本，然后追加引用 Run ID、Manifest 摘要和 Run Authorization Approval 的 TaskTransition。事务提交前不得创建 Pi Session、RoleRun 或执行工具；提交后才能创建第一个 Executor RoleRun。
+全部通过后，Control Plane 在同一事务中将 Run 更新为已授权、将 Task 更新为 `executing`，增加两者版本，并分别追加 RunTransition 和引用 Run ID、Manifest 摘要及 Run Authorization Approval 的 TaskTransition。事务提交前不得创建 Pi Session、RoleRun 或执行工具；提交后才能创建第一个 Executor RoleRun。
 
 如果提交事务后、创建 RoleRun 前发生中断，恢复程序根据处于 `executing` 的 Task、已授权 Run 和不存在 RoleRun 的事实安全继续，不读取 Pi 对话推断。Run Authorization 已批准但 `planning -> executing` 事务尚未提交时，如果发现代码基线或其他锁定内容变化，当前 Run 不得激活；Task 保持 `planning`，并创建新的 Run 和 Manifest。事务提交后的外部变化如何停止和恢复，纳入后续中断与对账设计。
 

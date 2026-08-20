@@ -127,17 +127,21 @@ Explore、Test、Regulatory Review、Security Review、Architecture Review 和 D
 
 每项任务都通过一组可持久化、可恢复的状态推进。状态表示已经形成的事实和证据，而不是某个 Agent 的对话阶段。Coordinator Agent 可以提出转换建议，确定性逻辑也可以发起转换，但只有 Control Plane 在校验门禁后能持久化新状态。
 
-Control Plane 使用以下五类记录保存权威事实，而不是从 Pi Session 或模型对话中推断：
+Control Plane 使用以下相互关联的记录保存权威事实，而不是从 Pi Session 或模型对话中推断：
 
 | 记录 | 用途 | 权威边界 |
 | --- | --- | --- |
 | **Task** | 保存一个用户交付目标、当前阶段、版本和最终结果。 | Control Plane 判断任务当前处于什么阶段的依据。 |
 | **TaskTransition** | 追加记录每次状态变化的原状态、目标状态、操作者、原因以及审批和证据引用。 | 与 Task 状态在同一事务中写入，形成不可省略的状态变化历史。 |
-| **Approval** | 保存待审批请求，以及一个或多个 Human Authority 对确定版本对象作出的 ApprovalDecision。 | 请求和每项决定都必须绑定被审批对象的标识、版本和哈希；对象变化后原审批不能继续使用。 |
+| **Approval** | 保存绑定确定版本对象的待审批请求，并聚合所需决定。 | 被审批对象变化后，原请求不能继续使用。 |
+| **ApprovalDecision** | 追加保存 Human Authority 作出的每项决定、理由、条件和证据。 | 决定不可原地修改，并且必须绑定 Approval 版本。 |
+| **Run** | 保存一次受控交付尝试的当前状态、版本、最终结果及其 Manifest 关联。 | Control Plane 判断该次尝试是否仍可执行和恢复的依据。 |
+| **RunTransition** | 追加记录 Run 每次被接受的状态变化。 | 与 Run 当前状态在同一事务中写入，不保存未被接受的状态请求。 |
 | **RunManifest** | 锁定一次受控运行使用的任务版本、角色、Runtime、资源、工具、策略、目标仓库基线和审批引用。 | 封存后不可修改；任何已锁定内容变化都必须生成新的 Run 和 Manifest。 |
 | **RoleRun** | 记录某个角色的一次实际执行或重试，以及对应的 Pi Session 和运行结果。 | Pi Session 只关联 RoleRun，不代表 Task 状态或交付结论。 |
+| **RoleRunTransition** | 追加记录 RoleRun 的准备、启动、运行、结算、阻塞和恢复变化。 | 每项变化绑定当时有效的 fencing token，并与 RoleRun 当前状态在同一事务中写入。 |
 
-Task 保存当前状态和版本，TaskTransition 保存完整变化历史，两者必须在同一个持久化事务中保持一致。Run 表示一次获得授权的受控执行，由不可变的 RunManifest 和一个或多个 RoleRun 组成；Executor 与 Verifier 必须使用不同的 RoleRun 和 Pi Session。
+Task、Run 和 RoleRun 当前记录用于判断状态和恢复执行，对应 Transition 追加保存完整变化历史；当前状态与 Transition 必须在同一个持久化事务中保持一致。Transition 只记录 Control Plane 接受的权威状态变化，不代替 Pi 运行事件、工具操作账本或安全日志。Run 表示一次获得授权的受控执行，由不可变的 RunManifest 和一个或多个 RoleRun 组成；Executor 与 Verifier 必须使用不同的 RoleRun 和 Pi Session。
 
 下图用于说明任务主线和主要回流方向，不是实现可直接采用的合法转换清单。每条转换所需的操作者、输入、审批、证据和恢复条件将在详细状态转换设计确认后确定。
 
@@ -239,6 +243,8 @@ Run 是针对一个已批准 TRD 版本，在固定输入、权限和目标代�
 PRD、ContextManifest、TRD、目标仓库基线、Runtime、模型、角色、资源、工具、策略、权限、隔离方式或审批条件等已锁定内容发生变化时，必须终止当前 Run 并在重新满足前置门禁后生成新 Run。Agent 不得在现有 Run 内自行改变这些边界；代码、测试、验证结果、工具证据和获准范围内的返工属于 Run 输出，不修改 RunManifest。
 
 Run 依次处于等待授权、已授权、活动、停止中、阻塞或已结算状态；RoleRun 依次处于已准备、启动中、运行中、结算中、阻塞或已结算状态。Pi 正常结束不代表 RoleRun 成功，只有输出已封存且外部操作全部对账后才能结算；未知副作用不是终态，必须保持阻塞并停止自动重试。
+
+RunTransition 和 RoleRunTransition 追加保存每次被 Control Plane 接受的状态变化、前后版本、Command ID、操作者、原因和证据引用；RoleRunTransition 还保存该次变化使用的 fencing token。它们不记录每条模型消息、Pi 事件、租约续期或被拒绝的过期写入。
 
 RoleRun 在创建 Pi Session 前先持久化，并通过带单调递增 fencing token 的 Worker 租约执行。Runtime 事件、状态写入和 Tool Gateway 请求都必须携带当前 token，Control Plane 和 Tool Gateway 拒绝旧 token，防止租约过期后的旧 Worker 再次修改权威状态或发起新操作。租约失效前已经受理的外部操作不会被 token 自动撤销，必须按持久化 Operation ID 和幂等键完成对账后再决定恢复或重试。
 

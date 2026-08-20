@@ -29,7 +29,7 @@ v0.1 的设计是供真实项目验证的受控基线，不以一次性覆盖所
 
 ### 第 3 步设计进度
 
-已确认 Control Plane 使用 Task、TaskTransition、Approval、RunManifest 和 RoleRun 五类记录保存权威事实。Task 与 TaskTransition 在同一事务中记录当前状态和变化历史；Approval 必须绑定被审批对象的确定版本和哈希；RunManifest 封存后不可修改；RoleRun 负责关联实际角色执行和 Pi Session，Pi Session 不承担权威状态职责。
+已确认 Control Plane 使用 Task、Approval、Run、RunManifest 和 RoleRun 等相互关联的记录保存权威事实。Task、Run 和 RoleRun 的当前记录负责判断状态和恢复，对应 Transition 追加保存每次被接受的状态变化，并且必须与当前记录在同一事务中写入；Approval 必须绑定被审批对象的确定版本和哈希，Pi Session 不承担权威状态职责。
 
 已确认 Task 使用 `intake`、`contextualizing`、`drafting_trd`、`awaiting_trd_approval`、`planning`、`executing`、`verifying`、`awaiting_acceptance`、`blocked` 和 `closed` 十个状态。Human Authority 是操作者而不是状态；Task 不使用 `failed` 作为终态，一次执行失败由 RoleRun 记录并触发返工、阻塞或取消。
 
@@ -48,6 +48,8 @@ v0.1 的设计是供真实项目验证的受控基线，不以一次性覆盖所
 已确认 `seal_run_manifest` 使用 RFC 8785 与 SHA-256 原子保存 Run、不可变 Manifest 和待授权请求，Task 保持 `planning`。v0.1 始终要求 Human Authority 明确作出 Run Authorization；最终授权和执行前校验通过后，Control Plane 先持久化 `planning → executing`，事务提交后才允许创建 Executor RoleRun 或产生副作用。
 
 已确认 Run 与 RoleRun 分别保存流程状态和最终结果。RoleRun 必须经历持久化准备、租约启动、运行和外部操作结算，Pi 的完成结果不能代替 RoleRun 成功；未知副作用进入 `blocked` 而不是自动失败重试。Worker 租约使用单调递增 fencing token，状态写入与新工具请求拒绝旧 token；接管前已经受理的工具操作仍须按 Operation ID 和幂等键完成对账。
+
+已确认 RunTransition 和 RoleRunTransition 只追加保存 Control Plane 成功接受的权威状态变化，不保存全部 Pi 事件或工具调用。每项 Transition 记录前后状态与版本、命令、操作者、原因和证据；RoleRunTransition 还绑定当时的 fencing token。被拒绝的过期写入进入安全日志，不得进入状态历史。
 
 仍需依次确认其余合法状态转换及门禁、Approval 的撤回与失效等异常生命周期、Run 核心字段、持久化方案、工具结果对账细节，以及第 3 步的完整验收条件。详细讨论记录见 [`docs/design/control-plane-state-and-run-manifest.md`](../docs/design/control-plane-state-and-run-manifest.md)。
 
