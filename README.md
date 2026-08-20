@@ -244,6 +244,8 @@ PRD、ContextManifest、TRD、目标仓库基线、Runtime、模型、角色、�
 
 Run 依次处于等待授权、已授权、活动、停止中、阻塞或已结算状态；RoleRun 依次处于已准备、启动中、运行中、结算中、阻塞或已结算状态。Pi 正常结束不代表 RoleRun 成功，只有输出已封存且外部操作全部对账后才能结算；未知副作用不是终态，必须保持阻塞并停止自动重试。
 
+Run 当前记录只保存 Run ID、Task ID、版本、Manifest 摘要、授权请求引用、当前状态、最终结果、停止或恢复意图以及基本时间。授权版本、替代关系、操作者、证据和阶段时间保存在 RunTransition；当前 RoleRun 和执行次数从当前 Run 下完整保留的 RoleRun 记录查询，避免在 Run 中维护重复状态。
+
 RunTransition 和 RoleRunTransition 追加保存每次被 Control Plane 接受的状态变化、前后版本、Command ID、操作者、原因和证据引用；RoleRunTransition 还保存该次变化使用的 fencing token。它们不记录每条模型消息、Pi 事件、租约续期或被拒绝的过期写入。
 
 RoleRun 在创建 Pi Session 前先持久化，并通过带单调递增 fencing token 的 Worker 租约执行。Runtime 事件、状态写入和 Tool Gateway 请求都必须携带当前 token，Control Plane 和 Tool Gateway 拒绝旧 token，防止租约过期后的旧 Worker 再次修改权威状态或发起新操作。租约失效前已经受理的外部操作不会被 token 自动撤销，必须按持久化 Operation ID 和幂等键完成对账后再决定恢复或重试。

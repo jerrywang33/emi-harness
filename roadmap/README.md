@@ -51,7 +51,9 @@ v0.1 的设计是供真实项目验证的受控基线，不以一次性覆盖所
 
 已确认 RunTransition 和 RoleRunTransition 只追加保存 Control Plane 成功接受的权威状态变化，不保存全部 Pi 事件或工具调用。每项 Transition 记录前后状态与版本、命令、操作者、原因和证据；RoleRunTransition 还绑定当时的 fencing token。被拒绝的过期写入进入安全日志，不得进入状态历史。
 
-仍需依次确认其余合法状态转换及门禁、Approval 的撤回与失效等异常生命周期、Run 核心字段、持久化方案、工具结果对账细节，以及第 3 步的完整验收条件。详细讨论记录见 [`docs/design/control-plane-state-and-run-manifest.md`](../docs/design/control-plane-state-and-run-manifest.md)。
+已确认 Run 当前记录采用最小字段，只保存身份、版本、Manifest 摘要、授权请求、状态与结果、停止或恢复意图以及基本时间。授权版本、替代关系、证据和阶段时间进入 RunTransition；当前 RoleRun 和实际次数从 Run 未结算期间完整保留的 RoleRun 记录查询，并通过数据库约束和事务检查并发及 `maxRoleRuns`。
+
+仍需依次确认其余合法状态转换及门禁、Approval 的撤回与失效等异常生命周期、Run 与 Task 状态对应关系、持久化方案、工具结果对账细节，以及第 3 步的完整验收条件。详细讨论记录见 [`docs/design/control-plane-state-and-run-manifest.md`](../docs/design/control-plane-state-and-run-manifest.md)。
 
 ### 第 2 步实际结果
 

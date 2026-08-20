@@ -53,7 +53,7 @@ Task
 
 ## 已确认的状态变化记录边界
 
-TaskTransition、RunTransition 和 RoleRunTransition 采用同一组最小字段：Transition ID、所属记录 ID、Command ID 或内部 Event ID、原状态与新状态、原版本与新版本、操作者、原因代码、证据引用和发生时间。记录初次创建时，原状态和原版本为空；当前记录及其初始 Transition 必须在同一事务中生成。
+TaskTransition、RunTransition 和 RoleRunTransition 采用同一组最小字段：Transition ID、所属记录 ID、Command ID 或内部 Event ID、原状态与新状态、原版本与新版本、操作者、原因代码、相关记录引用、证据引用和发生时间。记录初次创建时，原状态和原版本为空；当前记录及其初始 Transition 必须在同一事务中生成。
 
 RoleRunTransition 额外记录该次变化使用的 `leaseToken`。初始 `prepared` 记录使用 `0` 表示尚未发放租约，任何 Runtime 写入或工具请求都不能使用它；首次取得租约后 token 才递增为有效值。Control Plane 只有在 token、当前状态和版本均有效时才更新 RoleRun 并追加 Transition；被拒绝的旧 token 写入进入安全日志，不得伪装成成功的状态变化。
 
@@ -103,7 +103,41 @@ type RunOutcome =
   | "superseded"
   | "rejected"
   | "failed";
+
+type Run = {
+  runId: string;
+  taskId: string;
+  version: number;
+
+  manifestDigest: string;
+  authorizationApprovalId: string;
+
+  status: RunStatus;
+  outcome?: RunOutcome;
+
+  pendingOutcome?: "cancelled" | "superseded" | "failed";
+  resumeToStatus?: "authorized" | "active" | "stopping";
+  reasonCode?: string;
+
+  createdAt: string;
+  updatedAt: string;
+  settledAt?: string;
+};
 ```
+
+Run 只保存判断当前状态和中断后继续处理所需的最小事实。RunManifest 以 Run ID 一对一保存 Schema 版本和规范内容；实际生效的 Approval 版本、替代的旧 Run、操作者、证据和各阶段时间保存在对应 RunTransition 中，不在 Run 当前行重复。
+
+字段不变量如下：
+
+- `stopping` 必须同时具有 `pendingOutcome` 和 `reasonCode`，不能具有 `resumeToStatus`。
+- `blocked` 必须同时具有 `resumeToStatus` 和 `reasonCode`，不能具有 `pendingOutcome`。
+- 其他状态不能残留 `pendingOutcome`、`resumeToStatus` 或 `reasonCode`。
+- `settled` 必须同时具有 `outcome` 和 `settledAt`，其他状态不能提前保存最终结果。
+- Run 的 `manifestDigest` 和 `authorizationApprovalId` 在创建后不可改变；Run Authorization 生效时采用的 Approval 版本写入 RunTransition。
+- 一个 Task 最多存在一个未结算 Run，一个 Run 最多存在一个未结算 RoleRun；由数据库唯一约束或等价事务约束保证，不能由 Agent 查询后自行判断。
+- RoleRun 记录不得为重置次数而删除，并且在 Run 未结算期间必须完整保留。创建 RoleRun 时必须锁定或版本校验 Run，在同一事务中统计已有 RoleRun 并检查 RunManifest 的 `maxRoleRuns`；Run 结算后的保留或删除由后续数据保留策略决定。
+
+Run 不保存 Pi Session、模型消息、代码输出、工具结果、审批决定正文、凭据或 Manifest 中已经锁定的角色与能力配置。当前未结算 RoleRun、实际执行次数和生命周期时间从 RoleRun 与 Transition 权威记录查询，不在 Run 中维护容易失配的缓存字段。
 
 | Run 状态 | 含义 |
 | --- | --- |
@@ -527,7 +561,7 @@ Control Plane 记录决定时必须校验审批人身份与角色、Approval 版
 
 1. 其余合法状态转换、每次转换所需的输出与门禁，以及阻塞后的恢复规则。
 2. Approval 请求撤回、超时失效和批准后撤销如何生效。
-3. Run 的核心字段，以及 Run 与 Task 状态转换的完整对应关系。
+3. Run 与 Task 状态转换的完整对应关系。
 4. 持久化数据库、事务边界、迁移方式和并发控制。
 5. Agent 启动、运行和完成各阶段发生进程中断时的恢复与对账语义。
 6. 第 3 步的自动化验收条件。
