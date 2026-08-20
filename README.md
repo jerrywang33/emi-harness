@@ -248,6 +248,8 @@ Run 当前记录只保存 Run ID、Task ID、版本、Manifest 摘要、授权�
 
 Task 与未结算 Run 不是一一对应：`planning` 只能没有 Run 或等待授权，`executing` 对应已授权或活动 Run，`verifying` 与 `awaiting_acceptance` 对应活动 Run，`blocked` 只能没有 Run，或对应停止中、阻塞 Run；其他 Task 状态不允许存在未结算 Run。Run Authorization 生效时同时推进 Task 与 Run，第一个 RoleRun 取得租约时 Run 才进入活动状态。
 
+Executor 不能通过一条 Agent 消息宣称完成。Control Plane 只在代码或 Patch、自检结果、工具操作和证据已经封存并对账后接受 `submit_execution_for_verification`，原子结算 Executor RoleRun 并将 Task 改为 `verifying`；Verifier 只能检查该次交接绑定的精确输出，不能自行选择工作区中的最新内容。
+
 RunTransition 和 RoleRunTransition 追加保存每次被 Control Plane 接受的状态变化、前后版本、Command ID、操作者、原因和证据引用；RoleRunTransition 还保存该次变化使用的 fencing token。它们不记录每条模型消息、Pi 事件、租约续期或被拒绝的过期写入。
 
 RoleRun 在创建 Pi Session 前先持久化，并通过带单调递增 fencing token 的 Worker 租约执行。Runtime 事件、状态写入和 Tool Gateway 请求都必须携带当前 token，Control Plane 和 Tool Gateway 拒绝旧 token，防止租约过期后的旧 Worker 再次修改权威状态或发起新操作。租约失效前已经受理的外部操作不会被 token 自动撤销，必须按持久化 Operation ID 和幂等键完成对账后再决定恢复或重试。

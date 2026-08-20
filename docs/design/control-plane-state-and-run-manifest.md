@@ -2,7 +2,7 @@
 
 - 状态：设计中
 - 对应 Roadmap：v0.1 第 3 步
-- 最后更新：2026-08-19
+- 最后更新：2026-08-20
 
 ## 目标
 
@@ -578,11 +578,40 @@ Control Plane 必须在同一事务中校验 Task、PRD、ContextManifest 和 TR
 
 Control Plane 记录决定时必须校验审批人身份与角色、Approval 版本，以及绑定的 TRD、PRD 和 ContextManifest 是否仍然有效，然后追加 ApprovalDecision 并重新计算 Approval 结果。只有形成最终结果时，才在同一事务中更新 Task、增加 Task 版本并追加 TaskTransition；仍需等待其他决定时不改变 Task 状态。
 
+### `submit_execution_for_verification`
+
+```text
+Task:    executing -> verifying
+Run:     active -> active
+RoleRun: settling -> settled / succeeded
+```
+
+本命令是 Executor 向 Verifier 的确定性交接，不是人工审批。Executor 可以请求交接，但不能直接结算自身或修改 Task；Control Plane 只有在输出已固定、执行已结束并且外部操作结果全部确定后才能接受命令。
+
+Executor 必须先形成带 ID、版本和 SHA-256 的 ExecutionResult 制品，至少绑定 Task、Run、Manifest 和 Executor RoleRun，记录实际输入制品、目标代码基线、输出 Commit 或 Patch 摘要、变更路径、要求的自检结果、Tool Operation 引用、证据引用和已知限制。ExecutionResult 是 RoleRun 输出制品，不新增一种任务状态权威记录。
+
+转换前必须满足：
+
+- Task 为 `executing`，Run 为 `active`，Executor RoleRun 为 `settling`；命令携带正确的 Task、Run 和 RoleRun 版本、唯一 Command ID 以及当前 `leaseToken`。
+- RunManifest、Run Authorization、PRD、ContextManifest、TRD 和所有 `execution` 前条件仍然有效。
+- Pi 已结束且 `runtimeOutcome` 为 `completed`，Executor RoleRun 尚未结算。
+- ExecutionResult 已持久化并封存，绑定的输入、基线和输出摘要与实际制品一致。
+- 变更没有超出 RunManifest 允许的目标仓库和路径，原始基线没有发生未获准变化。
+- 所有 Tool Operation 已经落账且结果确定，不存在仍在执行或结果未知的副作用。
+- RunManifest 要求的 Executor 自检已经执行并通过，所需证据完整且可以解析。
+- 当前 Task 和 Run 没有其他未结算 RoleRun，也没有阻塞事项。
+
+Control Plane 必须在同一事务中重新校验上述权威记录，将 Executor RoleRun 结算为 `succeeded` 并保存输出与证据引用，追加 RoleRunTransition，将 Task 更新为 `verifying` 并增加版本，然后追加绑定 Run ID、Manifest 摘要、Executor RoleRun ID 和 ExecutionResult 摘要的 TaskTransition。Run 保持 `active`，不追加没有状态变化的 RunTransition。
+
+事务提交后才能创建 Verifier RoleRun。Verifier 的输入必须显式引用本次 TaskTransition 绑定的 ExecutionResult，不能通过工作目录、分支名称或 Pi Session 自行选择“最新代码”。本转换不发送人工审批请求。
+
+如果在输出封存或工具对账期间中断，RoleRun 保持 `settling`，恢复程序幂等继续处理，不能重新执行 Executor。如果事务提交后、创建 Verifier RoleRun 前中断，恢复程序根据 `verifying` Task、`active` Run、已结算 Executor RoleRun 和不存在 Verifier RoleRun 的事实安全继续。
+
 ## 待确认问题
 
 1. 其余合法状态转换、每次转换所需的输出与门禁，以及阻塞后的恢复规则。
 2. Approval 请求撤回、超时失效和批准后撤销如何生效。
-3. 正常执行、范围内返工、Run 终止、取消和替代的完整转换门禁。
+3. Verifier 结果、最终验收、范围内返工、Run 终止、取消和替代的完整转换门禁。
 4. 持久化数据库、事务边界、迁移方式和并发控制。
 5. Agent 启动、运行和完成各阶段发生进程中断时的恢复与对账语义。
 6. 第 3 步的自动化验收条件。
