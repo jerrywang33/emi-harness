@@ -57,6 +57,8 @@ v0.1 的设计是供真实项目验证的受控基线，不以一次性覆盖所
 
 已确认 `submit_execution_for_verification` 是 Executor 向 Verifier 的确定性交接，而不是人工审批。只有 ExecutionResult、目标代码输出、自检、Tool Operation 和证据完成封存与对账后，Control Plane 才能原子结算 Executor RoleRun 并将 Task 从 `executing` 改为 `verifying`；Verifier 必须绑定该次交接的精确输出。
 
+已确认 Verifier 分别记录 RuntimeOutcome、RoleRunOutcome 和 VerificationVerdict。VerificationResult 是绑定精确 ExecutionResult 和验收标准的版本化 RoleRun 输出，以 `pass`、`fail` 或 `blocked` 描述交付结论；Verifier RoleRun `succeeded` 不代表交付通过。未知工具结果不允许伪装成最终 verdict，必须保持阻塞并先完成对账。
+
 仍需依次确认其余合法状态转换及门禁、Approval 的撤回与失效等异常生命周期、Verifier 结果、最终验收、范围内返工、Run 终止、取消和替代的转换门禁、持久化方案、工具结果对账细节，以及第 3 步的完整验收条件。详细讨论记录见 [`docs/design/control-plane-state-and-run-manifest.md`](../docs/design/control-plane-state-and-run-manifest.md)。
 
 ### 第 2 步实际结果

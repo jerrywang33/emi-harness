@@ -607,6 +607,60 @@ Control Plane 必须在同一事务中重新校验上述权威记录，将 Execu
 
 如果在输出封存或工具对账期间中断，RoleRun 保持 `settling`，恢复程序幂等继续处理，不能重新执行 Executor。如果事务提交后、创建 Verifier RoleRun 前中断，恢复程序根据 `verifying` Task、`active` Run、已结算 Executor RoleRun 和不存在 Verifier RoleRun 的事实安全继续。
 
+### VerificationResult 结果边界
+
+Verifier 必须分别记录 Pi Runtime 是否正常结束、Verifier RoleRun 是否完整结算以及被检查交付是否符合要求，三者不能互相代替：
+
+| 层次 | 回答的问题 | 结果示例 |
+| --- | --- | --- |
+| **RuntimeOutcome** | Pi 进程是否正常结束？ | `completed`、`error`、`incomplete`。 |
+| **RoleRunOutcome** | Verifier 本次工作是否完整结算？ | `succeeded`、`failed`、`interrupted`。 |
+| **VerificationVerdict** | 被检查的 ExecutionResult 是否符合要求？ | `pass`、`fail`、`blocked`。 |
+
+Pi 正常结束不代表验证通过；Verifier RoleRun 的 `succeeded` 也只表示它完整产出了可用结果。例如 Verifier 成功发现实现缺陷时，RoleRun 是 `succeeded`，VerificationVerdict 是 `fail`。
+
+```ts
+type VerificationVerdict = "pass" | "fail" | "blocked";
+
+type VerificationResult = {
+  resultId: string;
+  version: string;
+  digest: string;
+
+  taskId: string;
+  runId: string;
+  verifierRoleRunId: string;
+
+  executionResultRef: VersionedRef;
+  acceptanceCriteriaRef: VersionedRef;
+
+  verdict: VerificationVerdict;
+  findingClass?: "implementation" | "trd" | "context" | "prd";
+  block?: {
+    reasonCode: string;
+    owner: string;
+    recoveryCondition: string;
+  };
+
+  checkResultRefs: VersionedRef[];
+  evidenceRefs: string[];
+  findings: string[];
+  createdAt: string;
+};
+```
+
+VerificationResult 是 Verifier RoleRun 的版本化输出制品，不新增一种任务状态权威记录。它必须绑定 `submit_execution_for_verification` 交接的精确 ExecutionResult 和验收标准，封存后不允许原地修改。
+
+结论规则如下：
+
+- `pass` 表示所有必需检查已经执行并通过、证据完整，可以请求进入最终验收；不能携带 `findingClass` 或 `block`。
+- `fail` 表示能够依据具体验收标准和证据证明交付不合格，必须携带 `findingClass`，不能携带 `block`。存在多个类别时，按 `prd`、`context`、`trd`、`implementation` 的顺序选择需要回退最远的控制类别。
+- `blocked` 表示由于明确识别的外部缺口而无法可靠形成 PASS 或 FAIL，必须携带结构化 `block`，不能携带 `findingClass`，也不能用来掩盖已经能够证明的失败。
+
+Verifier 可以提出 verdict 和 findingClass，Control Plane 必须校验结构、引用、证据完整性、职责分离和确定性分类规则，再决定 Task 如何流转；Verifier 不能直接指定目标状态。
+
+只有 Verifier 已安全结束、所有 Tool Operation 结果确定并且 VerificationResult 可以封存时，RoleRun 才能以 `succeeded` 结算。Pi `error`、进程中断或无法形成完整结果时没有 VerificationVerdict，当前 RoleRun 应按已知事实结算为 `failed` 或 `interrupted`。如果存在未知工具结果，RoleRun、Run 和 Task 保持 `blocked`，不得生成一个看似完整的 `blocked` VerificationResult 代替对账。
+
 ## 待确认问题
 
 1. 其余合法状态转换、每次转换所需的输出与门禁，以及阻塞后的恢复规则。
