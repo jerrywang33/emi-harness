@@ -53,7 +53,9 @@ v0.1 的设计是供真实项目验证的受控基线，不以一次性覆盖所
 
 已确认 Run 当前记录采用最小字段，只保存身份、版本、Manifest 摘要、授权请求、状态与结果、停止或恢复意图以及基本时间。授权版本、替代关系、证据和阶段时间进入 RunTransition；当前 RoleRun 和实际次数从 Run 未结算期间完整保留的 RoleRun 记录查询，并通过数据库约束和事务检查并发及 `maxRoleRuns`。
 
-仍需依次确认其余合法状态转换及门禁、Approval 的撤回与失效等异常生命周期、Run 与 Task 状态对应关系、持久化方案、工具结果对账细节，以及第 3 步的完整验收条件。详细讨论记录见 [`docs/design/control-plane-state-and-run-manifest.md`](../docs/design/control-plane-state-and-run-manifest.md)。
+已确认 Task 与未结算 Run 的静态对应关系：设计与审批阶段不允许未结算 Run，`planning` 只能没有 Run 或等待授权，执行、验证和验收阶段共享同一个已授权或活动 Run，`blocked` 只允许没有 Run，或对应停止中、阻塞 Run，`closed` 不允许未结算 Run。Task 与 Run 的关联状态必须原子推进。
+
+仍需依次确认其余合法状态转换及门禁、Approval 的撤回与失效等异常生命周期、正常执行与返工、Run 终止、取消和替代的转换门禁、持久化方案、工具结果对账细节，以及第 3 步的完整验收条件。详细讨论记录见 [`docs/design/control-plane-state-and-run-manifest.md`](../docs/design/control-plane-state-and-run-manifest.md)。
 
 ### 第 2 步实际结果
 

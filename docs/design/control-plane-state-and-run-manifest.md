@@ -150,6 +150,27 @@ Run 不保存 Pi Session、模型消息、代码输出、工具结果、审批�
 
 Run 只有在用户最终验收后才能以 `completed` 结算。Verifier PASS 时 Task 进入 `awaiting_acceptance`，Run 仍保持 `active`，以便用户提出获准范围内的返工。
 
+### Run 与 Task 的静态对应
+
+这里的“未结算 Run”是指状态不为 `settled` 的 Run；同一 Task 下已经结算的历史 Run 不参与当前状态约束。
+
+| Task 状态 | 允许的未结算 Run 状态 |
+| --- | --- |
+| **`intake`** | 不允许存在。 |
+| **`contextualizing`** | 不允许存在。 |
+| **`drafting_trd`** | 不允许存在。 |
+| **`awaiting_trd_approval`** | 不允许存在。 |
+| **`planning`** | 不存在，或者为 `awaiting_authorization`。 |
+| **`executing`** | `authorized` 或 `active`。 |
+| **`verifying`** | `active`。 |
+| **`awaiting_acceptance`** | `active`。 |
+| **`blocked`** | 不存在，或者为 `stopping`、`blocked`。 |
+| **`closed`** | 不允许存在。 |
+
+Run Authorization 生效时，Task 的 `planning -> executing` 与 Run 的 `awaiting_authorization -> authorized` 必须原子提交。仅创建 `prepared` RoleRun 不激活 Run；Worker 成功取得租约并将第一个 RoleRun 改为 `starting` 时，必须在同一事务中将 Run 从 `authorized` 改为 `active`。
+
+Executor、Verifier 和获准范围内返工可以改变 Task 在 `executing`、`verifying` 和 `awaiting_acceptance` 之间的状态，但同一个 Run 保持 `active`。需要终止或无法确认副作用时，Task 必须先进入 `blocked`，Run 对应进入 `stopping` 或 `blocked`；在恢复、完成对账或结算前不得创建新的 Run 或 RoleRun。Run 一旦 `settled` 就只作为历史记录存在，不再约束当前 Task 与未结算 Run 的对应关系。
+
 ```ts
 type RoleRunStatus =
   | "prepared"
@@ -561,7 +582,7 @@ Control Plane 记录决定时必须校验审批人身份与角色、Approval 版
 
 1. 其余合法状态转换、每次转换所需的输出与门禁，以及阻塞后的恢复规则。
 2. Approval 请求撤回、超时失效和批准后撤销如何生效。
-3. Run 与 Task 状态转换的完整对应关系。
+3. 正常执行、范围内返工、Run 终止、取消和替代的完整转换门禁。
 4. 持久化数据库、事务边界、迁移方式和并发控制。
 5. Agent 启动、运行和完成各阶段发生进程中断时的恢复与对账语义。
 6. 第 3 步的自动化验收条件。
