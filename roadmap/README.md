@@ -20,12 +20,25 @@ v0.1 的设计是供真实项目验证的受控基线，不以一次性覆盖所
 | 2 | 验证并锁定 Pi SDK 的受控嵌入契约 | 精确 Pi 版本、最小 `PiRuntimePort`、受控 ResourceLoader、精确工具白名单和事件转换验证 | 已完成 |
 | 3 | 实现最小持久化任务状态与运行清单 | 可恢复的任务状态、角色运行记录、人工门禁和版本化运行清单 | 已完成 |
 | 4 | 实现最小 Controlled EMI Resources | 一条带权威来源、版本、适用范围、状态和哈希的 EMI Context，一个受控 Skill，以及读取和校验方式 | 已完成 |
-| 5 | 实现最小 Tool Gateway 与隔离执行边界 | 一个带权限决策、操作意图、幂等键、执行结果和中断后对账的可测试工具调用 | 待开始 |
+| 5 | 实现最小 Tool Gateway 与隔离执行边界 | 一个带权限决策、操作意图、幂等键、执行结果和中断后对账的可测试工具调用 | 已完成 |
 | 6 | 实现 Executor、Verifier 与最小验证证据 | 独立 Pi Sessions、失败回流、人工批准点，以及不能由 Executor 自行宣布通过的检查 | 待开始 |
 | 7 | 接入本地 TypeScript 目标项目并执行完整任务 | 可重复运行的设计到交付过程、失败恢复和完整 Evidence Package | 待开始 |
 | 8 | 用户验收并决定 v0.2 | 验收结论、实际问题和下一阶段范围 | 待开始 |
 
-下一步只执行第 5 步，实现一个由 Tool Gateway 持久化授权、意图、幂等键、执行结果和对账状态的最小有副作用工具；不同时创建后续目标包或占位实现。
+下一步只执行第 6 步，组装 Executor 与独立 Verifier RoleRun，并保存确定性检查、验证结论和最小证据；不同时创建第 7 步目标项目或其他占位实现。
+
+### 第 5 步实际结果
+
+- 新增 `@emi-harness/tool-gateway`，只注册带固定定义摘要的 `workspace.write_text@1`，不向 Agent 提供 Shell、Git、网络、删除、移动或任意文件读取能力。
+- `ControlPlaneRoleRunAuthority` 在每个新 Operation 前重新读取 Run、RoleRun 和 RunManifest，要求 Run 为 active、RoleRun 为 running、角色为 Executor、lease 未过期、fencing token 精确匹配，并重新核对工具版本、定义摘要、策略引用和隔离配置。
+- Gateway 使用独立 SQLite 账本保存 Operation 当前状态，以及不可修改的 PolicyDecision、OperationIntent、OperationResult 和 OperationTransition；数据库重开后仍可按 Operation ID 恢复和查询。
+- Tool call 幂等键由 Run、RoleRun、Pi call ID、工具名和版本确定性派生。同一请求重放返回原 Operation，同一键绑定不同请求摘要时失败，不会产生第二次副作用。
+- 允许决定和完整 Intent 在同一事务中提交；Gateway 再把状态提交为 `executing` 后才调用 Executor。Worker 明确返回前置条件失败时记录已知失败，进程超时、退出、取消或协议异常则记录 `unknown`。
+- `SubprocessWorkspaceExecutor` 把 `repositoryId` 与本地真实根目录显式绑定，只向独立 Node helper process 发送一个版本化请求。Worker 再次检查路径、父目录、符号链接、文件类型、内容大小和旧摘要，并通过排他临时文件、flush 与原子 rename 写入。
+- `reconcile(operationId)` 不要求旧 lease 继续有效，也不再次写入：目标等于 Intent 摘要时结算成功，仍是明确旧状态时结算为未应用，其他状态保持未知并等待人工处理。
+- 工具、策略和隔离 profile 的 v1 摘要由测试固定；2 个测试文件中的 9 个场景覆盖执行前持久化、真实写入和重开、不可变记录、权限拒绝、CAS、幂等冲突、符号链接逃逸，以及已应用、未应用和分歧状态对账。
+
+详细边界和限制见 [Tool Gateway v0.1 设计](../docs/design/tool-gateway-v0.1.md)。本地 helper process 是可测试的最小进程隔离，不宣称具备生产所需的容器、虚拟机或操作系统级网络隔离；该升级必须根据真实部署环境另作 ADR。
 
 ### 第 4 步实际结果
 

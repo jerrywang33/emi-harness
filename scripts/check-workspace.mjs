@@ -29,6 +29,7 @@ for (const path of [
   "docs/design/control-plane-persistence-and-recovery.md",
   "docs/design/control-plane-state-and-run-manifest.md",
   "docs/design/controlled-emi-resources-v0.1.md",
+  "docs/design/tool-gateway-v0.1.md",
   "package.json",
   "pnpm-lock.yaml",
   "pnpm-workspace.yaml",
@@ -137,6 +138,26 @@ for (const path of [
   "tsconfig.json",
 ]) {
   await requirePath(join(resourceRegistryRoot, path));
+}
+
+const toolGatewayRoot = join(root, "packages/tool-gateway");
+for (const path of [
+  "README.md",
+  "package.json",
+  "src/control-plane-authority.ts",
+  "src/definitions.ts",
+  "src/index.ts",
+  "src/migrations.ts",
+  "src/sqlite-tool-gateway.ts",
+  "src/subprocess-workspace-executor.ts",
+  "src/workspace-write-policy.ts",
+  "test/gateway.integration.test.ts",
+  "test/recovery.integration.test.ts",
+  "tsconfig.build.json",
+  "tsconfig.json",
+  "worker/workspace-worker.mjs",
+]) {
+  await requirePath(join(toolGatewayRoot, path));
 }
 if (await exists(join(runtimePiRoot, "package.json"))) {
   const runtimePiPackage = JSON.parse(await readFile(join(runtimePiRoot, "package.json"), "utf8"));
