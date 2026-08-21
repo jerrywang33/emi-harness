@@ -1,4 +1,15 @@
 export { IntegrationError, type IntegrationErrorCode } from "./errors.js";
+export {
+  CandidateEvidencePackageBuilder,
+  parseCandidateEvidencePackage,
+  serializeCandidateEvidencePackage,
+  verifyCandidateEvidencePackage,
+  writeCandidateEvidencePackage,
+  type CandidateEvidencePackageBuilderConfig,
+  type CandidateEvidencePackageEnvelope,
+  type CandidateEvidencePackageRequest,
+  type ControlledResourceSnapshot,
+} from "./candidate-evidence-package.js";
 export { GatewayRuntimeToolCollector, type GatewayRuntimeContext } from "./gateway-runtime-tool.js";
 export {
   RoleExecutionCoordinator,

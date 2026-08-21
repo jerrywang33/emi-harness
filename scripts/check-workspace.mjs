@@ -35,6 +35,7 @@ for (const path of [
   "pnpm-lock.yaml",
   "pnpm-workspace.yaml",
   "roadmap/README.md",
+  "scripts/run-v0.1-local-calibration.mjs",
   "tsconfig.base.json",
 ]) {
   await requirePath(join(root, path));
@@ -99,7 +100,11 @@ const runtimePiRoot = join(root, "packages/runtime-pi");
 for (const path of [
   "README.md",
   "package.json",
+  "src/controlled-pi-session-factory.ts",
   "src/index.ts",
+  "src/testing/deterministic-pi-runtime-adapter.ts",
+  "src/testing/index.ts",
+  "test/deterministic-pi-runtime-adapter.test.ts",
   "test/pi-sdk.contract.test.ts",
   "tsconfig.build.json",
   "tsconfig.json",
@@ -183,10 +188,12 @@ const integrationRoot = join(root, "packages/integration");
 for (const path of [
   "README.md",
   "package.json",
+  "src/candidate-evidence-package.ts",
   "src/gateway-runtime-tool.ts",
   "src/index.ts",
   "src/role-execution-coordinator.ts",
   "src/submission-tools.ts",
+  "test/pi-target.e2e.test.ts",
   "test/role-execution.integration.test.ts",
   "test/submission-tools.test.ts",
   "tsconfig.build.json",

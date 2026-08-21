@@ -286,6 +286,13 @@ export class SqliteToolGateway {
     return operationFromRow(row);
   }
 
+  listOperationsForRoleRun(roleRunId: string): ToolOperation[] {
+    requireText("roleRunId", roleRunId);
+    return (this.database
+      .prepare("SELECT * FROM operations WHERE role_run_id = ? ORDER BY created_at, operation_id")
+      .all(roleRunId) as SqlRow[]).map(operationFromRow);
+  }
+
   getDecision(operationId: string): PolicyDecision {
     const row = this.database.prepare("SELECT * FROM policy_decisions WHERE operation_id = ?").get(operationId) as
       | SqlRow

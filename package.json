@@ -9,6 +9,7 @@
     "node": ">=24.15.0"
   },
   "scripts": {
+    "calibrate:v0.1": "node scripts/run-v0.1-local-calibration.mjs",
     "check": "node scripts/check-workspace.mjs && pnpm -r --if-present run check"
   },
   "devDependencies": {

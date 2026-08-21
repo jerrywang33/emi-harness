@@ -110,6 +110,19 @@ export interface Approval {
   updatedAt: string;
 }
 
+export interface ApprovalDecision {
+  decisionId: string;
+  approvalId: string;
+  approvalVersion: number;
+  decision: ApprovalDecisionValue;
+  authorityId: string;
+  authorityRole: string;
+  reason: string;
+  conditions: readonly ApprovalCondition[];
+  evidenceRefs: readonly string[];
+  decidedAt: string;
+}
+
 export type RunStatus = "awaiting_authorization" | "authorized" | "active" | "stopping" | "blocked" | "settled";
 export type RunOutcome = "completed" | "cancelled" | "superseded" | "rejected" | "failed";
 export type PendingRunOutcome = "cancelled" | "superseded" | "failed";

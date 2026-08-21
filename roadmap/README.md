@@ -22,7 +22,7 @@ v0.1 的设计是供真实项目验证的受控基线，不以一次性覆盖所
 | 4 | 实现最小 Controlled EMI Resources | 一条带权威来源、版本、适用范围、状态和哈希的 EMI Context，一个受控 Skill，以及读取和校验方式 | 已完成 |
 | 5 | 实现最小 Tool Gateway 与隔离执行边界 | 一个带权限决策、操作意图、幂等键、执行结果和中断后对账的可测试工具调用 | 已完成 |
 | 6 | 实现 Executor、Verifier 与最小验证证据 | 独立 Pi Sessions、失败回流、人工批准点，以及不能由 Executor 自行宣布通过的检查 | 已完成 |
-| 7 | 接入本地 TypeScript 目标项目并执行完整任务 | 可重复运行的设计到交付过程、失败恢复和完整 Evidence Package | 待开始 |
+| 7 | 接入本地 TypeScript 目标项目并执行完整任务 | 可重复运行的设计到交付过程、失败恢复和完整 Evidence Package | 实现中 |
 | 8 | 用户验收并决定 v0.2 | 验收结论、实际问题和下一阶段范围 | 待开始 |
 
 下一步只执行第 7 步，接入一个本地 TypeScript 目标项目，使用真实 `PiRuntimeAdapter` 的无网络可重复模型完成执行、独立验证、失败恢复和 Evidence Package 导出；不提前扩充完整 EMI 业务范围。

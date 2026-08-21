@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 
 import {
   AssuranceService,
@@ -19,7 +19,7 @@ import {
   type VersionedRef,
 } from "@emi-harness/control-plane";
 import { FileResourceRegistry } from "@emi-harness/resource-registry";
-import type { RuntimeAgentOutcome } from "@emi-harness/runtime-pi";
+import type { PiRuntimePort, RuntimeAgentOutcome, RuntimeModelRef } from "@emi-harness/runtime-pi";
 import {
   ControlPlaneRoleRunAuthority,
   LOCAL_WORKSPACE_ISOLATION_REF,
@@ -78,28 +78,54 @@ function ref(value: ArtifactInput): VersionedRef {
   return { id: value.id, version: value.version, digest: value.digest };
 }
 
-export interface HarnessFixture {
+export interface HarnessFixture<Runtime extends PiRuntimePort = ScriptedRuntime> {
   root: string;
+  stateRoot: string;
+  statePaths: {
+    controlPlane: string;
+    evidence: string;
+    toolGateway: string;
+  };
   controlPlane: SqliteControlPlane;
   gateway: SqliteToolGateway;
   evidence: SqliteEvidenceStore;
-  runtime: ScriptedRuntime;
+  resourceRegistry: FileResourceRegistry;
+  runtime: Runtime;
   coordinator: RoleExecutionCoordinator;
   manifest: RunManifestV1;
   manifestDigest: string;
+  closeStores(): void;
+  removeRoot(): Promise<void>;
   close(): Promise<void>;
 }
 
-export interface HarnessFixtureOptions {
+export interface HarnessFixtureOptions<Runtime extends PiRuntimePort = ScriptedRuntime> {
   checkPasses?: boolean;
   executor?: IsolatedToolExecutorPort;
   executorCalls?: readonly ScriptedToolCall[];
   executorOutcome?: RuntimeAgentOutcome;
+  harnessCommit?: string;
+  model?: RuntimeModelRef;
+  piPackages?: readonly VersionedRef[];
+  prepareTarget?(root: string): Promise<string>;
+  repositoryId?: string;
+  runtimeAdapter?: VersionedRef;
+  runtimeEnvironment?: VersionedRef;
+  runtime?: Runtime;
+  targetRoot?: string;
   verifierCalls?: readonly ScriptedToolCall[];
 }
 
-export async function createHarnessFixture(options: HarnessFixtureOptions = {}): Promise<HarnessFixture> {
-  const root = await mkdtemp(join(tmpdir(), "emi-integration-"));
+export async function createHarnessFixture<Runtime extends PiRuntimePort = ScriptedRuntime>(
+  options: HarnessFixtureOptions<Runtime> = {},
+): Promise<HarnessFixture<Runtime>> {
+  if (options.targetRoot !== undefined && !isAbsolute(options.targetRoot)) {
+    throw new Error("Harness fixture targetRoot must be absolute");
+  }
+  const ownsTarget = options.targetRoot === undefined;
+  const root = options.targetRoot ?? await mkdtemp(join(tmpdir(), "emi-integration-"));
+  if (!ownsTarget) await mkdir(root);
+  const stateRoot = await mkdtemp(join(tmpdir(), "emi-integration-state-"));
   await mkdir(join(root, "src"));
   await mkdir(join(root, "checks"));
   await writeFile(join(root, "AGENTS.md"), "AMBIENT_RESOURCE_MUST_NOT_LOAD\n", "utf8");
@@ -110,9 +136,18 @@ export async function createHarnessFixture(options: HarnessFixtureOptions = {}):
       : "import { readFile } from 'node:fs/promises'; const text = await readFile(new URL('../src/status.ts', import.meta.url), 'utf8'); if (!text.includes('safeguarded')) process.exit(1); process.stdout.write('verified\\n');\n",
     "utf8",
   );
+  const baseCommit = options.prepareTarget === undefined
+    ? "0123456789abcdef0123456789abcdef01234567"
+    : await options.prepareTarget(root);
   const clock = new TestClock();
+  const repositoryId = options.repositoryId ?? "local-target";
+  const statePaths = {
+    controlPlane: join(stateRoot, "control-plane.sqlite"),
+    evidence: join(stateRoot, "evidence.sqlite"),
+    toolGateway: join(stateRoot, "tool-gateway.sqlite"),
+  };
   const controlPlane = new SqliteControlPlane({
-    databasePath: join(root, "control-plane.sqlite"),
+    databasePath: statePaths.controlPlane,
     clock,
     idGenerator: new TestIds(),
   });
@@ -197,21 +232,25 @@ export async function createHarnessFixture(options: HarnessFixtureOptions = {}):
       prerequisiteApprovals: [approvalRef],
     },
     target: {
-      repositoryId: "local-target",
-      baseCommit: "0123456789abcdef0123456789abcdef01234567",
+      repositoryId,
+      baseCommit,
       allowedPaths: ["src/status.ts"],
     },
     runtime: {
-      harnessCommit: "fedcba9876543210fedcba9876543210fedcba98",
-      adapter: constantRef("runtime-pi-adapter"),
-      piPackages: [constantRef("pi-agent-core"), constantRef("pi-coding-agent")],
-      environment: constantRef("node-24"),
+      harnessCommit: options.harnessCommit ?? "fedcba9876543210fedcba9876543210fedcba98",
+      adapter: options.runtimeAdapter ?? constantRef("runtime-pi-adapter"),
+      piPackages: options.piPackages ?? [constantRef("pi-agent-core"), constantRef("pi-coding-agent")],
+      environment: options.runtimeEnvironment ?? constantRef("node-24"),
     },
     roles: [
       {
         rolePlanId: "executor-plan",
         role: "executor",
-        model: { provider: "scripted", modelId: "v0.1" },
+        model: {
+          provider: options.model?.provider ?? "scripted",
+          modelId: options.model?.id ?? "v0.1",
+          ...(options.model?.thinkingLevel === undefined ? {} : { thinkingLevel: options.model.thinkingLevel }),
+        },
         resources: [contextRef],
         skills: [],
         prompts: [],
@@ -223,7 +262,11 @@ export async function createHarnessFixture(options: HarnessFixtureOptions = {}):
       {
         rolePlanId: "verifier-plan",
         role: "verifier",
-        model: { provider: "scripted", modelId: "v0.1" },
+        model: {
+          provider: options.model?.provider ?? "scripted",
+          modelId: options.model?.id ?? "v0.1",
+          ...(options.model?.thinkingLevel === undefined ? {} : { thinkingLevel: options.model.thinkingLevel }),
+        },
         resources: [contextRef],
         skills: [],
         prompts: [],
@@ -272,41 +315,43 @@ export async function createHarnessFixture(options: HarnessFixtureOptions = {}):
   });
 
   const isolatedExecutor = options.executor ?? await SubprocessWorkspaceExecutor.create({
-    repositoryId: "local-target",
+    repositoryId,
     workspaceRoot: root,
   });
   const gateway = new SqliteToolGateway({
-    databasePath: join(root, "tool-gateway.sqlite"),
+    databasePath: statePaths.toolGateway,
     authority: new ControlPlaneRoleRunAuthority(controlPlane, clock),
     executor: isolatedExecutor,
     registrations: [{ definition: WORKSPACE_WRITE_TOOL, policy: new WorkspaceWritePolicy() }],
     clock,
     idGenerator: new TestIds(),
   });
-  const evidence = new SqliteEvidenceStore({ databasePath: join(root, "evidence.sqlite"), clock });
-  const checkRunner = await NodeCheckRunner.create({ repositoryId: "local-target", workspaceRoot: root, clock });
+  const evidence = new SqliteEvidenceStore({ databasePath: statePaths.evidence, clock });
+  const checkRunner = await NodeCheckRunner.create({ repositoryId, workspaceRoot: root, clock });
   const assurance = new AssuranceService(evidence, checkRunner);
-  const runtime = new ScriptedRuntime();
-  runtime.setScript("role-executor-1", options.executorCalls ?? [
-    {
-      callId: "write-status",
-      name: WORKSPACE_WRITE_TOOL_REF.name,
-      input: { path: "src/status.ts", content: "export const status = 'safeguarded';\n", expectedDigest: "absent" },
-    },
-    {
-      callId: "submit-execution",
-      name: SUBMIT_EXECUTION_TOOL_REF.name,
-      input: { summary: "Added safeguarded status", changedPaths: ["src/status.ts"], selfChecks: ["reviewed output"] },
-    },
-  ]);
-  if (options.executorOutcome !== undefined) runtime.setOutcome("role-executor-1", options.executorOutcome);
-  runtime.setScript("role-verifier-1", options.verifierCalls ?? [
-    {
-      callId: "submit-verification",
-      name: SUBMIT_VERIFICATION_TOOL_REF.name,
-      input: { verdict: "pass", reason: "Required check passed", findings: [] },
-    },
-  ]);
+  const runtime: PiRuntimePort = options.runtime ?? new ScriptedRuntime();
+  if (runtime instanceof ScriptedRuntime) {
+    runtime.setScript("role-executor-1", options.executorCalls ?? [
+      {
+        callId: "write-status",
+        name: WORKSPACE_WRITE_TOOL_REF.name,
+        input: { path: "src/status.ts", content: "export const status = 'safeguarded';\n", expectedDigest: "absent" },
+      },
+      {
+        callId: "submit-execution",
+        name: SUBMIT_EXECUTION_TOOL_REF.name,
+        input: { summary: "Added safeguarded status", changedPaths: ["src/status.ts"], selfChecks: ["reviewed output"] },
+      },
+    ]);
+    if (options.executorOutcome !== undefined) runtime.setOutcome("role-executor-1", options.executorOutcome);
+    runtime.setScript("role-verifier-1", options.verifierCalls ?? [
+      {
+        callId: "submit-verification",
+        name: SUBMIT_VERIFICATION_TOOL_REF.name,
+        input: { verdict: "pass", reason: "Required check passed", findings: [] },
+      },
+    ]);
+  }
   const roleCoordinator = new RoleExecutionCoordinator({
     controlPlane,
     runtime,
@@ -316,20 +361,37 @@ export async function createHarnessFixture(options: HarnessFixtureOptions = {}):
     evidenceStore: evidence,
     coordinator,
   });
+  let storesClosed = false;
+  const closeStores = () => {
+    if (storesClosed) return;
+    storesClosed = true;
+    gateway.close();
+    evidence.close();
+    controlPlane.close();
+  };
+  const removeRoot = async () => {
+    await Promise.all([
+      ...(ownsTarget ? [rm(root, { recursive: true, force: true })] : []),
+      rm(stateRoot, { recursive: true, force: true }),
+    ]);
+  };
   return {
     root,
+    stateRoot,
+    statePaths,
     controlPlane,
     gateway,
     evidence,
-    runtime,
+    resourceRegistry: registry,
+    runtime: runtime as Runtime,
     coordinator: roleCoordinator,
     manifest,
     manifestDigest: sealed.manifestDigest,
+    closeStores,
+    removeRoot,
     close: async () => {
-      gateway.close();
-      evidence.close();
-      controlPlane.close();
-      await rm(root, { recursive: true, force: true });
+      closeStores();
+      await removeRoot();
     },
   };
 }

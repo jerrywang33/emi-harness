@@ -1,6 +1,6 @@
 # `@emi-harness/runtime-pi`
 
-`runtime-pi` is the only package allowed to depend on Pi. It implements the neutral `PiRuntimePort` used by the future EMI Control Plane and isolates the rest of EMI Harness from Pi types and defaults.
+`runtime-pi` is the only package allowed to depend on Pi. It implements the neutral `PiRuntimePort` used by the EMI Control Plane and isolates the rest of EMI Harness from Pi types and defaults.
 
 ## Pinned upstream contract
 
@@ -26,7 +26,9 @@ Upgrading any Pi package requires updating all three versions together and rerun
 
 ## Current limits
 
-This package does not yet implement persistent EMI task state, a Tool Gateway, an isolated executor, governed Skills, an Evidence Store, or production credential management. Those belong to later Roadmap steps and must not be added to the Agent loop.
+Persistent EMI task state, the Tool Gateway, isolated execution, governed resources, Evidence and production credential management remain outside this package and must not be added to the Agent loop.
+
+The `@emi-harness/runtime-pi/testing` entrypoint provides a deterministic adapter for offline tests and engineering calibration. It still creates a real Pi AgentSession with the same controlled Session factory, but replaces the remote model with one-use Faux Provider scripts. It must not be used for production runs or model-quality evaluation.
 
 ## Verification
 

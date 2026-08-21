@@ -3,7 +3,10 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)));
-const entrypoint = resolve(packageRoot, "dist/index.d.ts");
+const entrypoints = [
+  resolve(packageRoot, "dist/index.d.ts"),
+  resolve(packageRoot, "dist/testing/index.d.ts"),
+];
 const visited = new Set();
 const piImports = [];
 
@@ -29,7 +32,9 @@ async function inspectDeclaration(path) {
   }
 }
 
-await inspectDeclaration(entrypoint);
+for (const entrypoint of entrypoints) {
+  await inspectDeclaration(entrypoint);
+}
 
 if (piImports.length > 0) {
   console.error("Pi types leaked through the public runtime-pi declaration graph:");

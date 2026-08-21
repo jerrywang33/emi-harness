@@ -31,6 +31,7 @@ import { applyMigrations } from "./migrations.js";
 import type {
   Actor,
   Approval,
+  ApprovalDecision,
   ApprovalCondition,
   ApprovalDecisionValue,
   ApprovalStatus,
@@ -259,6 +260,21 @@ function approvalFromRow(row: SqlRow): Approval {
   };
 }
 
+function approvalDecisionFromRow(row: SqlRow): ApprovalDecision {
+  return {
+    decisionId: asText(row, "decision_id"),
+    approvalId: asText(row, "approval_id"),
+    approvalVersion: asNumber(row, "approval_version"),
+    decision: asText(row, "decision") as ApprovalDecision["decision"],
+    authorityId: asText(row, "authority_id"),
+    authorityRole: asText(row, "authority_role"),
+    reason: asText(row, "reason"),
+    conditions: parseJson<ApprovalDecision["conditions"]>(asText(row, "conditions_json")),
+    evidenceRefs: parseJson<string[]>(asText(row, "evidence_refs_json")),
+    decidedAt: asText(row, "decided_at"),
+  };
+}
+
 function runFromRow(row: SqlRow): Run {
   return {
     runId: asText(row, "run_id"),
@@ -476,6 +492,13 @@ export class SqliteControlPlane {
     return this.requireApproval(approvalId);
   }
 
+  listApprovalDecisions(approvalId: string): ApprovalDecision[] {
+    this.requireApproval(approvalId);
+    return (this.database
+      .prepare("SELECT * FROM approval_decisions WHERE approval_id = ? ORDER BY decision_id")
+      .all(approvalId) as SqlRow[]).map(approvalDecisionFromRow);
+  }
+
   recordApprovalDecision(command: RecordApprovalDecisionCommand): { approval: Approval; task: Task; run?: Run } {
     return this.command("record_approval_decision", command, () => this.applyApprovalDecision(command));
   }
@@ -628,6 +651,13 @@ export class SqliteControlPlane {
 
   getRoleRun(roleRunId: string): RoleRun {
     return this.requireRoleRun(roleRunId);
+  }
+
+  listRoleRuns(runId: string): RoleRun[] {
+    this.requireRun(runId);
+    return (this.database
+      .prepare("SELECT * FROM role_runs WHERE run_id = ? ORDER BY attempt, role_run_id")
+      .all(runId) as SqlRow[]).map(roleRunFromRow);
   }
 
   acquireRoleRunLease(command: AcquireRoleRunLeaseCommand): { roleRun: RoleRun; run: Run } {
