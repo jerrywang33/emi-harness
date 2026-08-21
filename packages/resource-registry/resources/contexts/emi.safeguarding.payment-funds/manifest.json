@@ -1,0 +1,148 @@
+{
+  "schemaVersion": "1",
+  "resourceId": "emi.safeguarding.payment-funds",
+  "version": "2026.08.21",
+  "kind": "emi_context",
+  "status": "active",
+  "title": "EMI safeguarding for funds received for issued electronic money",
+  "content": {
+    "path": "context.md",
+    "mediaType": "text/markdown",
+    "digest": "sha256:d959443a556c842d075897b85eb1158ee407f80dd5b528911ba63f78f5a64e96"
+  },
+  "governance": {
+    "owner": "EMI Compliance Engineering",
+    "preparedAt": "2026-08-21",
+    "nextReviewAt": "2026-11-21",
+    "changePolicy": "manual_review",
+    "confirmationStatus": "source_baseline_task_confirmation_required"
+  },
+  "applicability": {
+    "jurisdictions": ["EEA"],
+    "regulatedEntityTypes": ["electronic_money_institution"],
+    "businessActivities": ["electronic_money_issuance", "receipt_of_funds_for_issued_electronic_money"],
+    "exclusions": ["member_state_specific_transposition", "selected_safeguarding_method", "production_legal_advice"],
+    "taskConfirmationRequired": true
+  },
+  "sources": [
+    {
+      "sourceId": "emd2-art7",
+      "authority": "European Parliament and Council of the European Union via EUR-Lex",
+      "documentTitle": "Directive 2009/110/EC consolidated text",
+      "documentId": "CELEX:02009L0110-20180113",
+      "versionDate": "2018-01-13",
+      "locator": "Article 7(1)-(4)",
+      "canonicalUrl": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02009L0110-20180113",
+      "retrievedAt": "2026-08-21",
+      "supportStatus": "source_supported"
+    },
+    {
+      "sourceId": "psd2-art10",
+      "authority": "European Parliament and Council of the European Union via EUR-Lex",
+      "documentTitle": "Directive (EU) 2015/2366 consolidated text",
+      "documentId": "CELEX:02015L2366-20250117",
+      "versionDate": "2025-01-17",
+      "locator": "Article 10",
+      "canonicalUrl": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02015L2366-20250117",
+      "retrievedAt": "2026-08-21",
+      "supportStatus": "source_supported"
+    },
+    {
+      "sourceId": "psd2-art114-annex2",
+      "authority": "European Parliament and Council of the European Union via EUR-Lex",
+      "documentTitle": "Directive (EU) 2015/2366 consolidated text",
+      "documentId": "CELEX:02015L2366-20250117",
+      "versionDate": "2025-01-17",
+      "locator": "Article 114 and Annex II correlation table",
+      "canonicalUrl": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:02015L2366-20250117",
+      "retrievedAt": "2026-08-21",
+      "supportStatus": "source_supported"
+    }
+  ],
+  "statements": [
+    {
+      "statementId": "SG-001",
+      "classification": "source_supported",
+      "sourceRefs": ["emd2-art7"],
+      "taskConfirmationRequired": true
+    },
+    {
+      "statementId": "SG-002",
+      "classification": "source_supported",
+      "sourceRefs": ["emd2-art7"],
+      "taskConfirmationRequired": true
+    },
+    {
+      "statementId": "SG-003",
+      "classification": "source_supported",
+      "sourceRefs": ["psd2-art10"],
+      "taskConfirmationRequired": true
+    },
+    {
+      "statementId": "SG-004",
+      "classification": "source_supported",
+      "sourceRefs": ["psd2-art114-annex2"],
+      "taskConfirmationRequired": true
+    },
+    {
+      "statementId": "TC-001",
+      "classification": "task_confirmation_required",
+      "sourceRefs": ["emd2-art7", "psd2-art10"],
+      "taskConfirmationRequired": true
+    },
+    {
+      "statementId": "TC-002",
+      "classification": "task_confirmation_required",
+      "sourceRefs": ["emd2-art7", "psd2-art10"],
+      "taskConfirmationRequired": true
+    },
+    {
+      "statementId": "TC-003",
+      "classification": "task_confirmation_required",
+      "sourceRefs": ["emd2-art7", "psd2-art10"],
+      "taskConfirmationRequired": true
+    },
+    {
+      "statementId": "TC-004",
+      "classification": "task_confirmation_required",
+      "sourceRefs": ["emd2-art7", "psd2-art10"],
+      "taskConfirmationRequired": true
+    },
+    {
+      "statementId": "TC-005",
+      "classification": "task_confirmation_required",
+      "sourceRefs": ["emd2-art7", "psd2-art10"],
+      "taskConfirmationRequired": true
+    },
+    {
+      "statementId": "ED-001",
+      "classification": "engineering_derived",
+      "sourceRefs": ["emd2-art7", "psd2-art10"],
+      "taskConfirmationRequired": true
+    },
+    {
+      "statementId": "ED-002",
+      "classification": "engineering_derived",
+      "sourceRefs": ["emd2-art7", "psd2-art10"],
+      "taskConfirmationRequired": true
+    },
+    {
+      "statementId": "ED-003",
+      "classification": "engineering_derived",
+      "sourceRefs": ["emd2-art7", "psd2-art10"],
+      "taskConfirmationRequired": true
+    },
+    {
+      "statementId": "ED-004",
+      "classification": "engineering_derived",
+      "sourceRefs": ["emd2-art7", "psd2-art10"],
+      "taskConfirmationRequired": true
+    },
+    {
+      "statementId": "ED-005",
+      "classification": "engineering_derived",
+      "sourceRefs": ["emd2-art7", "psd2-art10"],
+      "taskConfirmationRequired": true
+    }
+  ]
+}

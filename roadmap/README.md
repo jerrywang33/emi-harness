@@ -19,13 +19,25 @@ v0.1 的设计是供真实项目验证的受控基线，不以一次性覆盖所
 | 1 | 完成运行时选型，建立 Pi Runtime 与 EMI Control Plane 边界 | ADR 0002、一致的 README、Roadmap、仓库规则和 pnpm 工作区 | 已完成 |
 | 2 | 验证并锁定 Pi SDK 的受控嵌入契约 | 精确 Pi 版本、最小 `PiRuntimePort`、受控 ResourceLoader、精确工具白名单和事件转换验证 | 已完成 |
 | 3 | 实现最小持久化任务状态与运行清单 | 可恢复的任务状态、角色运行记录、人工门禁和版本化运行清单 | 已完成 |
-| 4 | 实现最小 Controlled EMI Resources | 一条带权威来源、版本、适用范围、状态和哈希的 EMI Context，一个受控 Skill，以及读取和校验方式 | 待开始 |
+| 4 | 实现最小 Controlled EMI Resources | 一条带权威来源、版本、适用范围、状态和哈希的 EMI Context，一个受控 Skill，以及读取和校验方式 | 已完成 |
 | 5 | 实现最小 Tool Gateway 与隔离执行边界 | 一个带权限决策、操作意图、幂等键、执行结果和中断后对账的可测试工具调用 | 待开始 |
 | 6 | 实现 Executor、Verifier 与最小验证证据 | 独立 Pi Sessions、失败回流、人工批准点，以及不能由 Executor 自行宣布通过的检查 | 待开始 |
 | 7 | 接入本地 TypeScript 目标项目并执行完整任务 | 可重复运行的设计到交付过程、失败恢复和完整 Evidence Package | 待开始 |
 | 8 | 用户验收并决定 v0.2 | 验收结论、实际问题和下一阶段范围 | 待开始 |
 
-下一步只执行第 4 步，定义并实现一条可由 RunManifest 精确引用和校验的 EMI Context 与受控 Skill；不同时创建其他目标包或占位实现。
+下一步只执行第 5 步，实现一个由 Tool Gateway 持久化授权、意图、幂等键、执行结果和对账状态的最小有副作用工具；不同时创建后续目标包或占位实现。
+
+### 第 4 步实际结果
+
+- 新增 `@emi-harness/resource-registry`，以显式 `registry.json` 作为唯一资源入口；Registry 不扫描目录，也不读取目标项目、用户目录、Pi Session 或网络内容。
+- 新增 `emi.safeguarding.payment-funds@2026.08.21` EMI Context。它记录 EMD2 Article 7、PSD2 Article 10、Article 114 和 Annex II 的 EUR-Lex 来源、文档版本、条款定位、获取日期、适用边界与确认状态。
+- Context 将 4 条来源支持命题、5 条任务确认事项和 5 条工程推导分别编号。来源基线获准加载不代表具体 Task 已完成成员国、牌照主体、资金范围、safeguarding 方法或业务规则确认。
+- 新增仅允许 Coordinator 使用的 `emi.skill.control-to-trd@2026.08.21`，把已确认的 PRD 和 Context 控制映射为 TRD、可验证控制、追溯表和待决项；Skill 明确禁止决定法规适用性、自行审批、扩大范围或静默假设。
+- Run 通过 Resource ID、版本和原始 Manifest SHA-256 精确引用资源；加载时再次验证 Manifest 身份、状态、内容摘要和角色，投影只暴露稳定的 `emi-resource:` 逻辑来源。
+- 路径检查在读取前拒绝绝对路径、非规范路径和父目录穿越，并在解析真实路径后拒绝符号链接逃逸；非活动资源、未索引资源、重复引用、摘要篡改、未知字段和重复 Statement ID 均为失败关闭。
+- 2 个测试文件中的 9 个场景覆盖稳定投影、角色限制、显式索引、Manifest 与内容摘要、inactive 状态、两级路径穿越、非权威 URL 和严格 Schema 语义。
+
+详细边界和验收条件见 [Controlled EMI Resources v0.1 设计](../docs/design/controlled-emi-resources-v0.1.md)。本步只提供经过验证的资源投影，不自行确认某个 Task 的法律适用性，也不直接创建 Pi Session；运行集成仍由后续 Integration 负责。
 
 ### 第 3 步设计进度
 

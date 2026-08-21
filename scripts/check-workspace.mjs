@@ -28,6 +28,7 @@ for (const path of [
   "docs/decisions/0003-use-sqlite-for-v0.1-control-plane.md",
   "docs/design/control-plane-persistence-and-recovery.md",
   "docs/design/control-plane-state-and-run-manifest.md",
+  "docs/design/controlled-emi-resources-v0.1.md",
   "package.json",
   "pnpm-lock.yaml",
   "pnpm-workspace.yaml",
@@ -117,6 +118,25 @@ for (const path of [
   "tsconfig.json",
 ]) {
   await requirePath(join(controlPlaneRoot, path));
+}
+
+const resourceRegistryRoot = join(root, "packages/resource-registry");
+for (const path of [
+  "README.md",
+  "package.json",
+  "resources/contexts/emi.safeguarding.payment-funds/context.md",
+  "resources/contexts/emi.safeguarding.payment-funds/manifest.json",
+  "resources/registry.json",
+  "resources/skills/emi.skill.control-to-trd/SKILL.md",
+  "resources/skills/emi.skill.control-to-trd/manifest.json",
+  "schemas/resource-manifest.schema.json",
+  "src/index.ts",
+  "test/registry.integration.test.ts",
+  "test/security.integration.test.ts",
+  "tsconfig.build.json",
+  "tsconfig.json",
+]) {
+  await requirePath(join(resourceRegistryRoot, path));
 }
 if (await exists(join(runtimePiRoot, "package.json"))) {
   const runtimePiPackage = JSON.parse(await readFile(join(runtimePiRoot, "package.json"), "utf8"));

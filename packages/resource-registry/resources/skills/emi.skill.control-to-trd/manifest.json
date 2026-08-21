@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "1",
+  "resourceId": "emi.skill.control-to-trd",
+  "version": "2026.08.21",
+  "kind": "skill",
+  "status": "active",
+  "title": "Map confirmed EMI controls into a traceable TRD",
+  "content": {
+    "path": "SKILL.md",
+    "mediaType": "text/markdown",
+    "digest": "sha256:1057402cd00bef79466f91fdbd6be742f97ff1ec07f2decebe815bb620f943ac"
+  },
+  "governance": {
+    "owner": "EMI Architecture",
+    "preparedAt": "2026-08-21",
+    "nextReviewAt": "2026-11-21",
+    "changePolicy": "manual_review",
+    "confirmationStatus": "engineering_baseline"
+  },
+  "skill": {
+    "allowedRoles": ["coordinator"],
+    "requiredInputs": ["versioned_prd", "validated_emi_context"],
+    "outputs": ["trd", "control_traceability", "unresolved_items"],
+    "prohibitedActions": ["regulatory_applicability_decision", "self_approval", "scope_expansion", "silent_assumption"]
+  }
+}

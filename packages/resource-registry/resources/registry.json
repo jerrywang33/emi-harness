@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "1",
+  "resources": [
+    {
+      "id": "emi.safeguarding.payment-funds",
+      "version": "2026.08.21",
+      "digest": "sha256:85cefa47f6b0183d6856fa7f8d5f42050eeea8c37081524a03e0b5ec33aed868",
+      "manifestPath": "contexts/emi.safeguarding.payment-funds/manifest.json"
+    },
+    {
+      "id": "emi.skill.control-to-trd",
+      "version": "2026.08.21",
+      "digest": "sha256:1cc10acb922327972a68e091acd4149b12da24b9f6a4b64f37cde63a281cef27",
+      "manifestPath": "skills/emi.skill.control-to-trd/manifest.json"
+    }
+  ]
+}

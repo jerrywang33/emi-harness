@@ -20,6 +20,8 @@ importers:
 
   packages/control-plane: {}
 
+  packages/resource-registry: {}
+
   packages/runtime-pi:
     dependencies:
       '@earendil-works/pi-agent-core':
