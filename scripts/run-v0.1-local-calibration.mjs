@@ -3,9 +3,10 @@ import { access } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
-const targetRoot = process.argv[2];
+const arguments_ = process.argv.slice(2).filter((argument) => argument !== "--");
+const targetRoot = arguments_[0];
 
-if (targetRoot === undefined || !isAbsolute(targetRoot)) {
+if (arguments_.length !== 1 || targetRoot === undefined || !isAbsolute(targetRoot)) {
   throw new Error("Usage: pnpm calibrate:v0.1 -- /absolute/path/to/new-target");
 }
 try {
