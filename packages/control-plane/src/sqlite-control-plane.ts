@@ -6,6 +6,7 @@ import { canonicalizeJson, digestJson, normalizeRunManifest, sha256Digest } from
 import type {
   AcceptDeliveryCommand,
   AcquireRoleRunLeaseCommand,
+  BlockRoleRunCommand,
   CancelTaskCommand,
   CompleteContextualizationCommand,
   CreateTaskCommand,
@@ -737,6 +738,59 @@ export class SqliteControlPlane {
         leaseToken: command.leaseToken,
         clearLease: true,
       });
+    });
+  }
+
+  blockRoleRun(command: BlockRoleRunCommand): { task: Task; run: Run; roleRun: RoleRun } {
+    return this.command("block_role_run", command, () => {
+      const task = this.requireTask(command.taskId);
+      const run = this.requireRun(command.runId);
+      const roleRun = this.requireRoleRun(command.roleRunId);
+      this.assertVersion("Task", task.version, command.expectedTaskVersion);
+      this.assertVersion("Run", run.version, command.expectedRunVersion);
+      if (!(["executing", "verifying"] as readonly TaskStatus[]).includes(task.status) || run.status !== "active") {
+        fail("invalid_transition", "Task and Run are not active for RoleRun blocking");
+      }
+      this.assertRoleLease(roleRun, command.expectedRoleRunVersion, command.leaseToken, "settling", command.actor);
+      if (run.taskId !== task.taskId || roleRun.runId !== run.runId) {
+        fail("invalid_input", "Task, Run, and RoleRun do not belong to the same execution");
+      }
+      requireText("reasonCode", command.reasonCode);
+      requireText("sanitizedError", command.sanitizedError);
+      if (command.evidenceRefs.length === 0) {
+        fail("invalid_input", "Blocking a RoleRun requires evidence");
+      }
+      const updatedRoleRun = this.writeRoleRunTransition(roleRun, {
+        status: "blocked",
+        actor: command.actor,
+        commandId: command.commandId,
+        reasonCode: command.reasonCode,
+        evidenceRefs: command.evidenceRefs,
+        errorCode: command.reasonCode,
+        sanitizedError: command.sanitizedError,
+        leaseToken: command.leaseToken,
+        clearLease: true,
+      });
+      const updatedRun = this.writeRunTransition(run, {
+        status: "blocked",
+        resumeToStatus: "active",
+        reasonCode: command.reasonCode,
+        actor: command.actor,
+        commandId: command.commandId,
+        refs: [],
+        evidenceRefs: command.evidenceRefs,
+      });
+      const updatedTask = this.writeTaskTransition(task, {
+        status: "blocked",
+        blockedReason: command.reasonCode,
+        resumeToStatus: task.status,
+        actor: command.actor,
+        commandId: command.commandId,
+        reasonCode: command.reasonCode,
+        refs: [],
+        evidenceRefs: command.evidenceRefs,
+      });
+      return { task: updatedTask, run: updatedRun, roleRun: updatedRoleRun };
     });
   }
 

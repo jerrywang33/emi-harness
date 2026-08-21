@@ -122,6 +122,19 @@ export interface SettleRoleRunCommand extends CommandRequest {
   evidenceRefs: readonly string[];
 }
 
+export interface BlockRoleRunCommand extends CommandRequest {
+  taskId: string;
+  expectedTaskVersion: number;
+  runId: string;
+  expectedRunVersion: number;
+  roleRunId: string;
+  expectedRoleRunVersion: number;
+  leaseToken: number;
+  reasonCode: string;
+  sanitizedError: string;
+  evidenceRefs: readonly string[];
+}
+
 export interface SubmitExecutionForVerificationCommand extends CommandRequest {
   taskId: string;
   expectedTaskVersion: number;

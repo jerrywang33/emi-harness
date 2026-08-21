@@ -1,0 +1,26 @@
+{
+  "name": "@emi-harness/integration",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Role execution and delivery integration for EMI Harness",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "check": "pnpm run typecheck && pnpm run test && pnpm run build"
+  },
+  "dependencies": {
+    "@emi-harness/assurance": "workspace:*",
+    "@emi-harness/control-plane": "workspace:*",
+    "@emi-harness/resource-registry": "workspace:*",
+    "@emi-harness/runtime-pi": "workspace:*",
+    "@emi-harness/tool-gateway": "workspace:*"
+  }
+}

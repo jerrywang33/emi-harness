@@ -21,11 +21,24 @@ v0.1 的设计是供真实项目验证的受控基线，不以一次性覆盖所
 | 3 | 实现最小持久化任务状态与运行清单 | 可恢复的任务状态、角色运行记录、人工门禁和版本化运行清单 | 已完成 |
 | 4 | 实现最小 Controlled EMI Resources | 一条带权威来源、版本、适用范围、状态和哈希的 EMI Context，一个受控 Skill，以及读取和校验方式 | 已完成 |
 | 5 | 实现最小 Tool Gateway 与隔离执行边界 | 一个带权限决策、操作意图、幂等键、执行结果和中断后对账的可测试工具调用 | 已完成 |
-| 6 | 实现 Executor、Verifier 与最小验证证据 | 独立 Pi Sessions、失败回流、人工批准点，以及不能由 Executor 自行宣布通过的检查 | 待开始 |
+| 6 | 实现 Executor、Verifier 与最小验证证据 | 独立 Pi Sessions、失败回流、人工批准点，以及不能由 Executor 自行宣布通过的检查 | 已完成 |
 | 7 | 接入本地 TypeScript 目标项目并执行完整任务 | 可重复运行的设计到交付过程、失败恢复和完整 Evidence Package | 待开始 |
 | 8 | 用户验收并决定 v0.2 | 验收结论、实际问题和下一阶段范围 | 待开始 |
 
-下一步只执行第 6 步，组装 Executor 与独立 Verifier RoleRun，并保存确定性检查、验证结论和最小证据；不同时创建第 7 步目标项目或其他占位实现。
+下一步只执行第 7 步，接入一个本地 TypeScript 目标项目，使用真实 `PiRuntimeAdapter` 的无网络可重复模型完成执行、独立验证、失败恢复和 Evidence Package 导出；不提前扩充完整 EMI 业务范围。
+
+### 第 6 步实际结果
+
+- 新增 `@emi-harness/assurance`，使用独立 SQLite 保存不可修改、带规范 JSON 和 SHA-256 的 Evidence；读取时重新核对摘要、索引列和输入摘要，重复 ID 绑定不同内容时失败关闭。
+- `NodeCheckRunner` 只运行 RunManifest 精确引用且摘要一致的仓库内 `.mjs` 检查脚本，不接受 Shell 字符串；它限制规范路径、符号链接、参数、超时、环境和输出，并把通过、失败或阻塞观察封存为 Check Evidence。
+- 新增 `@emi-harness/integration`，在 Control Plane 中先准备和租用 RoleRun，再将 RolePlan 声明的资源、带摘要的权威 Artifact 和精确工具列表交给 `PiRuntimePort`；Runtime 返回的身份和实际工具集会被再次核对。
+- Executor 只有 `workspace.write_text@1` 和无副作用的 `harness.submit_execution@1`。实际变更路径必须与成功 Tool Operation 精确一致；Runtime 成功、唯一结构化提交、工具对账和 Evidence 完成后才能交给 Verifier。
+- Verifier 使用新的 RoleRun 和 Session，只获得 `harness.submit_verification@1`，并读取绑定的 ExecutionResult、AcceptanceCriteria 和外部确定性检查结果；它不能写目标项目，也不能以自然语言覆盖失败检查。
+- Assurance 要求 Executor 与 Verifier 的 RoleRun 和 Session 不同、required checks 精确覆盖且 Evidence 绑定有效。全部检查通过才允许 PASS，并停在 `awaiting_acceptance`；实现失败返回 `executing`，伪造 PASS 结算本次 Verifier RoleRun 为失败。
+- 所有已经受理的 Executor Tool Operations 都先于 Runtime outcome 和 Agent submission 完成对账。任何未知副作用都原子阻塞 RoleRun、Run 和 Task，保留恢复状态，不能以普通 Runtime 失败重新执行。
+- 3 个 Assurance 测试文件中的 7 个场景和 2 个 Integration 测试文件中的 5 个场景覆盖 Evidence 不可变与重开、检查执行边界、独立 PASS、失败回流、伪造 PASS、受控上下文与工具，以及 Runtime 失败叠加未知副作用。全工作区 54 个测试通过。
+
+详细边界和本地进程限制见 [Executor、Verifier 与 Assurance v0.1 设计](../docs/design/executor-verifier-assurance-v0.1.md)。本步的 Scripted Runtime 只用于验证自有编排契约；实际 Pi AgentSession 的目标项目闭环属于第 7 步。
 
 ### 第 5 步实际结果
 

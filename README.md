@@ -211,7 +211,7 @@ EMI Harness 是拥有自己控制面的应用，Pi 是其中一个可替换的�
 | **Policies & Guardrails** | `control-plane`、`tool-gateway` 和 `assurance` 共同实现权限策略、数据分类、人工门禁、重试限制和 CI 门禁。 |
 | **Isolated Tool Plane** | `tool-gateway` 负责工具注册、权限决策、操作意图、幂等键、隔离执行和结果落账。Pi 自定义工具只能调用该边界。 |
 | **Verification & Evidence** | `assurance` 实现确定性检查、Verifier 规则、Evidence Schema、证据索引与交付包生成。 |
-| **Project Integrations** | `integration` 负责 Git、CI、知识源、工单、审批系统和目标仓库适配。 |
+| **Project Integrations** | `integration` 负责受控角色编排、目标仓库接入，以及后续 Git、CI、知识源、工单和审批系统适配。 |
 
 ### 控制面与运行时边界
 
@@ -293,7 +293,7 @@ emi-harness/
 │   ├── resource-registry/ # EMI Context、Skills、Prompts、Schema 与 ResourceLoader
 │   ├── tool-gateway/      # 工具策略、意图、幂等、执行与结果
 │   ├── assurance/         # Verifiers、Evidence Schema 与交付检查
-│   └── integration/       # Git、CI、知识源、工单和审批适配
+│   └── integration/       # 受控角色编排、目标仓库与外部系统适配
 ├── scripts/              # 受控启动、版本锁定、配置检查与发布脚本
 ├── tests/                # 跨包契约、失败恢复与端到端测试
 ├── roadmap/              # 阶段目标和实施进度
@@ -374,4 +374,4 @@ v0.1 中，EMI Harness 和用于校准的目标 EMI 应用统一使用 TypeScrip
 
 ## 当前阶段
 
-本 README 描述 EMI Harness 的目标定位和架构，不表示其中全部能力已经实现。旧版文件式 Harness 已删除；Pi Runtime 的受控嵌入、Control Plane 的 SQLite 权威状态与恢复机制、最小 Controlled EMI Resources，以及带权限重检、持久化意图、幂等和中断对账的本地 Tool Gateway 已经实现并通过测试。当前下一步是组装独立 Executor、Verifier 和最小验证证据；只有完成端到端验证的能力才视为可用。阶段目标、实施进度和完成条件以 [`roadmap/README.md`](roadmap/README.md) 为准。
+本 README 描述 EMI Harness 的目标定位和架构，不表示其中全部能力已经实现。旧版文件式 Harness 已删除；受控 Pi Runtime Adapter、SQLite Control Plane、最小 Controlled EMI Resources、Tool Gateway，以及独立 Executor/Verifier、确定性检查和不可变 Evidence 已经实现并通过测试。当前下一步是接入本地 TypeScript 目标项目，以实际 Pi AgentSession 跑通可重复的设计到交付闭环和失败恢复；完成该端到端验证后才形成 v0.1 工程基线。阶段目标、实施进度和完成条件以 [`roadmap/README.md`](roadmap/README.md) 为准。

@@ -29,6 +29,7 @@ for (const path of [
   "docs/design/control-plane-persistence-and-recovery.md",
   "docs/design/control-plane-state-and-run-manifest.md",
   "docs/design/controlled-emi-resources-v0.1.md",
+  "docs/design/executor-verifier-assurance-v0.1.md",
   "docs/design/tool-gateway-v0.1.md",
   "package.json",
   "pnpm-lock.yaml",
@@ -158,6 +159,40 @@ for (const path of [
   "worker/workspace-worker.mjs",
 ]) {
   await requirePath(join(toolGatewayRoot, path));
+}
+
+const assuranceRoot = join(root, "packages/assurance");
+for (const path of [
+  "README.md",
+  "package.json",
+  "src/assurance-service.ts",
+  "src/index.ts",
+  "src/migrations.ts",
+  "src/node-check-runner.ts",
+  "src/sqlite-evidence-store.ts",
+  "test/assurance-service.test.ts",
+  "test/evidence-store.integration.test.ts",
+  "test/node-check-runner.integration.test.ts",
+  "tsconfig.build.json",
+  "tsconfig.json",
+]) {
+  await requirePath(join(assuranceRoot, path));
+}
+
+const integrationRoot = join(root, "packages/integration");
+for (const path of [
+  "README.md",
+  "package.json",
+  "src/gateway-runtime-tool.ts",
+  "src/index.ts",
+  "src/role-execution-coordinator.ts",
+  "src/submission-tools.ts",
+  "test/role-execution.integration.test.ts",
+  "test/submission-tools.test.ts",
+  "tsconfig.build.json",
+  "tsconfig.json",
+]) {
+  await requirePath(join(integrationRoot, path));
 }
 if (await exists(join(runtimePiRoot, "package.json"))) {
   const runtimePiPackage = JSON.parse(await readFile(join(runtimePiRoot, "package.json"), "utf8"));
