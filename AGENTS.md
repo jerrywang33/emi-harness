@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-仓库处于 v0.1 工程验收阶段。Roadmap 第 2 至第 7 步已经实现并通过自动化检查；受控 Pi Runtime、Control Plane、Resource Registry、Tool Gateway、Assurance 和 Integration 已在独立本地 TypeScript 目标项目中通过真实 Pi AgentSession 跑通失败恢复、验证和候选 Evidence Package。用户真实 EMI 业务验收尚未进行，不能把工程校准记录解释为业务、法律或生产就绪结论。旧版文件式 Harness 已删除，不得继续引用原来的 `harness/`、`conventions/`、`specs/pilot/`、Codex Skill 或 `install.sh`。
+v0.1 工程基线已经发布，Roadmap 第 1 至第 8 步均已完成；范围、验收证据和限制见 [`docs/releases/v0.1.0.md`](docs/releases/v0.1.0.md)。受控 Pi Runtime、Control Plane、Resource Registry、Tool Gateway、Assurance 和 Integration 已在独立本地 TypeScript 目标项目中通过真实 Pi AgentSession 跑通失败恢复、验证和候选 Evidence Package。用户真实 EMI 业务验收尚未进行，不能把工程校准记录解释为业务、法律或生产就绪结论。旧版文件式 Harness 已删除，不得继续引用原来的 `harness/`、`conventions/`、`specs/pilot/`、Codex Skill 或 `install.sh`。
 
 ## 阅读顺序
 
