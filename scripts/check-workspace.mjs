@@ -103,6 +103,21 @@ for (const path of [
 ]) {
   await requirePath(join(runtimePiRoot, path));
 }
+
+const controlPlaneRoot = join(root, "packages/control-plane");
+for (const path of [
+  "README.md",
+  "package.json",
+  "src/index.ts",
+  "src/migrations.ts",
+  "src/sqlite-control-plane.ts",
+  "test/lifecycle.integration.test.ts",
+  "test/recovery.integration.test.ts",
+  "tsconfig.build.json",
+  "tsconfig.json",
+]) {
+  await requirePath(join(controlPlaneRoot, path));
+}
 if (await exists(join(runtimePiRoot, "package.json"))) {
   const runtimePiPackage = JSON.parse(await readFile(join(runtimePiRoot, "package.json"), "utf8"));
   for (const piPackage of [

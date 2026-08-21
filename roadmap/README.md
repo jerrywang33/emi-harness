@@ -18,14 +18,14 @@ v0.1 的设计是供真实项目验证的受控基线，不以一次性覆盖所
 | --- | --- | --- | --- |
 | 1 | 完成运行时选型，建立 Pi Runtime 与 EMI Control Plane 边界 | ADR 0002、一致的 README、Roadmap、仓库规则和 pnpm 工作区 | 已完成 |
 | 2 | 验证并锁定 Pi SDK 的受控嵌入契约 | 精确 Pi 版本、最小 `PiRuntimePort`、受控 ResourceLoader、精确工具白名单和事件转换验证 | 已完成 |
-| 3 | 实现最小持久化任务状态与运行清单 | 可恢复的任务状态、角色运行记录、人工门禁和版本化运行清单 | 实现中 |
+| 3 | 实现最小持久化任务状态与运行清单 | 可恢复的任务状态、角色运行记录、人工门禁和版本化运行清单 | 已完成 |
 | 4 | 实现最小 Controlled EMI Resources | 一条带权威来源、版本、适用范围、状态和哈希的 EMI Context，一个受控 Skill，以及读取和校验方式 | 待开始 |
 | 5 | 实现最小 Tool Gateway 与隔离执行边界 | 一个带权限决策、操作意图、幂等键、执行结果和中断后对账的可测试工具调用 | 待开始 |
 | 6 | 实现 Executor、Verifier 与最小验证证据 | 独立 Pi Sessions、失败回流、人工批准点，以及不能由 Executor 自行宣布通过的检查 | 待开始 |
 | 7 | 接入本地 TypeScript 目标项目并执行完整任务 | 可重复运行的设计到交付过程、失败恢复和完整 Evidence Package | 待开始 |
 | 8 | 用户验收并决定 v0.2 | 验收结论、实际问题和下一阶段范围 | 待开始 |
 
-下一步只执行第 3 步，按已接受的状态、运行清单和 SQLite 持久化设计实现对应包；不同时创建其他目标包或占位实现。
+下一步只执行第 4 步，定义并实现一条可由 RunManifest 精确引用和校验的 EMI Context 与受控 Skill；不同时创建其他目标包或占位实现。
 
 ### 第 3 步设计进度
 
@@ -72,6 +72,18 @@ v0.1 的设计是供真实项目验证的受控基线，不以一次性覆盖所
 已确认 Approval 使用追加式 Decision 与 Transition 保存完整生命周期。待审批可以撤回或按确定性时钟过期，批准后只能追加撤销事实；撤销不能删除历史授权，已经开始的 Run 必须进入停止或阻塞路径。
 
 已接受 [ADR 0003](../docs/decisions/0003-use-sqlite-for-v0.1-control-plane.md)：v0.1 由单 Control Plane 写进程使用 SQLite，依靠事务、版本、部分唯一索引、Command 幂等记录、outbox 和 RoleRun fencing token 保证状态与恢复边界。详细设计和第 3 步自动化验收条件见 [任务状态与运行清单设计](../docs/design/control-plane-state-and-run-manifest.md) 与 [持久化和恢复设计](../docs/design/control-plane-persistence-and-recovery.md)。
+
+### 第 3 步实际结果
+
+- 新增 `@emi-harness/control-plane`，使用 Node.js 内置 SQLite 保存 Task、Approval、ApprovalDecision、Run、RunManifest、RoleRun、追加式 Transition、幂等 Command 和 outbox；关闭并重开文件数据库后可以恢复权威状态。
+- 数据库迁移带固定摘要并原子应用，开启 foreign keys、WAL、同步写、defensive mode 和 busy timeout；不可变 Artifact、Manifest、Decision、Transition 和 Command 由触发器拒绝更新与删除。
+- Task、Run 与 RoleRun 使用单调版本阻止过期覆盖；部分唯一索引阻止同一个 Task 出现两个未结算 Run，以及同一个 Run 出现两个未结算 RoleRun。
+- RunManifest 先按 Schema 对无顺序集合稳定排序，再使用 RFC 8785 兼容的规范 JSON 和 SHA-256 封存；授权激活、角色启动、交接、验证、返工、取消与验收的多记录变化在单个事务中提交。
+- Approval 支持多角色聚合、职责分离、附条件批准边界、撤回、到期和撤销；每次授权和创建 RoleRun 前重新检查当前批准仍有效。
+- RoleRun 在创建 Pi Session 前持久化，租约取得与接管递增 fencing token；旧 Worker、过期租约和旧版本写入会被拒绝，启动恢复计划只读取数据库当前记录和 outbox。
+- 4 个测试文件中的 10 个场景已经覆盖完整设计到验收状态链、Command 重放与冲突、事务回滚、数据库重开、唯一和不可变约束、审批到期、运行中取消、租约接管与旧 token 拒绝。
+
+本步只保存 Tool Operation 引用，不实现工具意图、执行和结果对账；该账本属于第 5 步。Control Plane 也不自行判断 EMI 资源适用性或验证代码正确性，分别由第 4 步资源边界和第 6 步 Assurance 接入。
 
 ### 第 2 步实际结果
 

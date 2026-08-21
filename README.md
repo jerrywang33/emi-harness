@@ -374,4 +374,4 @@ v0.1 中，EMI Harness 和用于校准的目标 EMI 应用统一使用 TypeScrip
 
 ## 当前阶段
 
-本 README 描述 EMI Harness 的目标定位和架构，不表示其中全部能力已经实现。旧版文件式 Harness 已删除；Pi Runtime 的最小受控嵌入契约已经实现并通过无网络契约测试，Control Plane 状态、运行清单、持久化和恢复边界也已完成设计，当前正在实现最小持久化闭环。之后再依次接入受控资源、外部工具执行和独立验证；只有完成端到端验证的能力才视为可用。阶段目标、实施进度和完成条件以 [`roadmap/README.md`](roadmap/README.md) 为准。
+本 README 描述 EMI Harness 的目标定位和架构，不表示其中全部能力已经实现。旧版文件式 Harness 已删除；Pi Runtime 的最小受控嵌入契约，以及 Control Plane 的 SQLite 权威状态、审批、运行清单、角色租约和恢复计划已经实现并通过测试。当前下一步是接入最小 Controlled EMI Resources，之后再依次接入外部工具执行和独立验证；只有完成端到端验证的能力才视为可用。阶段目标、实施进度和完成条件以 [`roadmap/README.md`](roadmap/README.md) 为准。
