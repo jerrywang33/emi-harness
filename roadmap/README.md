@@ -22,10 +22,23 @@ v0.1 的设计是供真实项目验证的受控基线，不以一次性覆盖所
 | 4 | 实现最小 Controlled EMI Resources | 一条带权威来源、版本、适用范围、状态和哈希的 EMI Context，一个受控 Skill，以及读取和校验方式 | 已完成 |
 | 5 | 实现最小 Tool Gateway 与隔离执行边界 | 一个带权限决策、操作意图、幂等键、执行结果和中断后对账的可测试工具调用 | 已完成 |
 | 6 | 实现 Executor、Verifier 与最小验证证据 | 独立 Pi Sessions、失败回流、人工批准点，以及不能由 Executor 自行宣布通过的检查 | 已完成 |
-| 7 | 接入本地 TypeScript 目标项目并执行完整任务 | 可重复运行的设计到交付过程、失败恢复和完整 Evidence Package | 实现中 |
+| 7 | 接入本地 TypeScript 目标项目并执行完整任务 | 可重复运行的设计到交付过程、失败恢复和完整 Evidence Package | 已完成 |
 | 8 | 用户验收并决定 v0.2 | 验收结论、实际问题和下一阶段范围 | 待开始 |
 
-下一步只执行第 7 步，接入一个本地 TypeScript 目标项目，使用真实 `PiRuntimeAdapter` 的无网络可重复模型完成执行、独立验证、失败恢复和 Evidence Package 导出；不提前扩充完整 EMI 业务范围。
+下一步只执行第 8 步，对 v0.1 的实现、自动化检查、外部校准记录、已知限制和文档一致性进行工程验收并形成发布记录；真实 EMI 业务验收仍保留给后续用户校准。
+
+### 第 7 步实际结果
+
+- `runtime-pi` 把生产与校准共用的 Pi Session 创建逻辑提取为内部受控工厂；`@emi-harness/runtime-pi/testing` 使用 Pi 0.84.2 Faux Provider，但仍实际创建 AgentSession、注入自建 ResourceLoader、转换 Pi events 并执行自定义工具。
+- Deterministic Adapter 对每个 RoleRun 使用一次性响应脚本，拒绝未知或重复 RoleRun、未消费响应、并发 Session 和非固定模型；其 testing 公开声明同样经过 Pi 类型泄漏检查。
+- 新增真实 Pi 目标项目 E2E。临时目标先建立真实 Git baseline，RunManifest 锁定 Harness commit、目标 commit、三个 Pi 包及 npm integrity、Adapter、Node/pnpm 环境、资源和工具摘要。
+- 第一个 Executor 以错误旧摘要得到已知失败 Operation，安全结算后由第二个新 Session 重试成功；第三个只读 Verifier Session 在 Agent 外检查 TypeScript 输出并提交 PASS，Task 停在 `awaiting_acceptance`。
+- Candidate Evidence Package Builder 从三个可重开账本导出完整 Task/Run/RoleRun transitions、审批决定、制品、资源快照、Tool Operation 全记录和 Evidence；遗漏 Operation、未知状态、资源错配、证据缺失、摘要篡改或重复写文件均失败关闭。
+- 可重复命令要求 Harness 工作树干净和一个不存在的绝对目标路径，先执行全工作区检查，再创建无远端本地目标仓库并保留候选证据；已有目标不会被覆盖。
+- 外部 `emi-pilot-ts` 校准锁定 Harness commit `8570d99` 和目标基线 `8c9e919`，产生本地候选提交 `2787335`。第一次 Operation 明确失败、第二次成功，3 个 Pi Session 相互独立，目标检查和候选包摘要复算通过。
+- 6 个 Runtime 测试文件中的 15 个场景和 3 个 Integration 测试文件中的 6 个场景通过；全工作区共 55 个测试通过。
+
+详细设计见 [本地 TypeScript 目标项目校准 v0.1](../docs/design/local-typescript-calibration-v0.1.md)，实际 hash、结果和复核边界见 [v0.1 本地 TypeScript 工程校准记录](../calibrations/v0.1-local-typescript/README.md)。该记录不是用户真实业务验收。
 
 ### 第 6 步实际结果
 

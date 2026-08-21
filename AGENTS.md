@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-仓库处于 v0.1 重新建设阶段。Roadmap 第 2 至第 6 步已经实现并通过自动化检查，包括受控 Pi Runtime Adapter、SQLite Control Plane、Resource Registry、Tool Gateway、Assurance 和角色 Integration；这些包已能组成受控的 Executor/Verifier 组合测试，但尚未完成真实 Pi AgentSession 驱动的本地目标项目端到端运行和用户业务验收。旧版文件式 Harness 已删除，不得继续引用原来的 `harness/`、`conventions/`、`specs/pilot/`、Codex Skill 或 `install.sh`。
+仓库处于 v0.1 工程验收阶段。Roadmap 第 2 至第 7 步已经实现并通过自动化检查；受控 Pi Runtime、Control Plane、Resource Registry、Tool Gateway、Assurance 和 Integration 已在独立本地 TypeScript 目标项目中通过真实 Pi AgentSession 跑通失败恢复、验证和候选 Evidence Package。用户真实 EMI 业务验收尚未进行，不能把工程校准记录解释为业务、法律或生产就绪结论。旧版文件式 Harness 已删除，不得继续引用原来的 `harness/`、`conventions/`、`specs/pilot/`、Codex Skill 或 `install.sh`。
 
 ## 阅读顺序
 

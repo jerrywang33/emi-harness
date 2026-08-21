@@ -23,6 +23,7 @@ async function requirePath(path) {
 for (const path of [
   "AGENTS.md",
   "README.md",
+  "calibrations/v0.1-local-typescript/README.md",
   "docs/decisions/0001-rebuild-on-deepseek-harness.md",
   "docs/decisions/0002-adopt-pi-runtime-with-emi-control-plane.md",
   "docs/decisions/0003-use-sqlite-for-v0.1-control-plane.md",
