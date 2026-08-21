@@ -2,7 +2,7 @@
 
 - 状态：设计中
 - 对应 Roadmap：v0.1 第 3 步
-- 最后更新：2026-08-20
+- 最后更新：2026-08-21
 
 ## 目标
 
@@ -661,11 +661,36 @@ Verifier 可以提出 verdict 和 findingClass，Control Plane 必须校验结�
 
 只有 Verifier 已安全结束、所有 Tool Operation 结果确定并且 VerificationResult 可以封存时，RoleRun 才能以 `succeeded` 结算。Pi `error`、进程中断或无法形成完整结果时没有 VerificationVerdict，当前 RoleRun 应按已知事实结算为 `failed` 或 `interrupted`。如果存在未知工具结果，RoleRun、Run 和 Task 保持 `blocked`，不得生成一个看似完整的 `blocked` VerificationResult 代替对账。
 
+### `submit_verification_result`: `pass`
+
+```text
+Task:             verifying -> awaiting_acceptance
+Run:              active -> active
+Verifier RoleRun: settling -> settled / succeeded
+```
+
+`pass` 表示独立验证已经完成并通过，只能形成一个等待用户接受的固定交付对象，不能自动关闭 Task，也不能代替 Human Authority 的最终接受。
+
+转换前必须满足：
+
+- Task 为 `verifying`，Run 为 `active`，Verifier RoleRun 为 `settling`；命令携带正确的 Task、Run 和 RoleRun 版本、唯一 Command ID 以及当前 `leaseToken`。
+- VerificationResult 已持久化并封存，verdict 为 `pass`，且精确绑定当前 TaskTransition 交接的 ExecutionResult 和 RunManifest 验收标准。
+- Verifier 使用 Manifest 中独立的 Verifier RolePlan、Pi Session 和工具权限，满足职责分离策略，没有复用 Executor RoleRun 或 Session。
+- RunManifest 要求的检查全部执行并通过；必需检查不能静默跳过，只有 Manifest 已明确批准的 `N/A` 才能不执行。
+- 检查结果、原始证据和引用完整且摘要一致，VerificationResult 不包含失败或阻塞 finding。
+- 被验证的 Commit 或 Patch 仍与 ExecutionResult 摘要一致，没有在验证后发生变化。
+- 所有 Tool Operation 已完成对账，不存在仍在执行或结果未知的副作用。
+- RunManifest、Run Authorization 及所有验证前条件仍然有效，不存在其他未结算 RoleRun。
+
+Control Plane 必须在同一事务中重新执行确定性完整性和一致性检查，将 Verifier RoleRun 结算为 `succeeded` 并保存 VerificationResult 与证据引用，追加 RoleRunTransition，将 Task 更新为 `awaiting_acceptance` 并增加版本，然后追加绑定 ExecutionResult 和 VerificationResult 精确摘要的 TaskTransition。Run 保持 `active`，不追加没有状态变化的 RunTransition。
+
+如果 VerificationResult 缺少必需检查、声称 PASS 但确定性检查失败，或者被验证输出已经变化，Control Plane 必须拒绝命令，Verifier RoleRun 保持 `settling`，不能自动改写成“带风险通过”。事务提交后发生中断时，恢复程序根据 `awaiting_acceptance` Task、`active` Run 和已结算 Verifier RoleRun 继续等待用户决定，不重复验证或自动接受。
+
 ## 待确认问题
 
 1. 其余合法状态转换、每次转换所需的输出与门禁，以及阻塞后的恢复规则。
 2. Approval 请求撤回、超时失效和批准后撤销如何生效。
-3. Verifier 结果、最终验收、范围内返工、Run 终止、取消和替代的完整转换门禁。
+3. Verifier `fail` 与 `blocked`、最终验收、范围内返工、Run 终止、取消和替代的完整转换门禁。
 4. 持久化数据库、事务边界、迁移方式和并发控制。
 5. Agent 启动、运行和完成各阶段发生进程中断时的恢复与对账语义。
 6. 第 3 步的自动化验收条件。
