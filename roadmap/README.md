@@ -65,7 +65,9 @@ v0.1 的设计是供真实项目验证的受控基线，不以一次性覆盖所
 
 已确认 `submit_verification_result` 的 `blocked` 分支只处理已知外部缺口：Verifier 安全结算，Task 与 Run 阻塞；新增证据满足恢复条件且锁定输入未变时，以新 Verifier RoleRun 恢复验证。需要修改锁定输入时终止原 Run。未知 Tool Operation 不形成最终 verdict，必须先对账。
 
-仍需依次确认其余合法状态转换及门禁、Approval 的撤回与失效等异常生命周期、最终验收、验收返工、Run 取消和其他终止场景的转换门禁、持久化方案、工具结果对账细节，以及第 3 步的完整验收条件。详细讨论记录见 [`docs/design/control-plane-state-and-run-manifest.md`](../docs/design/control-plane-state-and-run-manifest.md)。
+已确认 `accept_delivery` 由有权限的 Human Authority 对精确交付对象直接提交，不额外创建单人 Acceptance Approval。所有验收条件、交付操作和权威证据满足后，Control Plane 原子结算 Task 与 Run；命令不执行副作用，附条件接受不能关闭任务，最终 Evidence Package 只作为验收后的可重试派生导出。
+
+仍需依次确认其余合法状态转换及门禁、Approval 的撤回与失效等异常生命周期、验收返工、Run 取消和其他终止场景的转换门禁、持久化方案、工具结果对账细节，以及第 3 步的完整验收条件。详细讨论记录见 [`docs/design/control-plane-state-and-run-manifest.md`](../docs/design/control-plane-state-and-run-manifest.md)。
 
 ### 第 2 步实际结果
 

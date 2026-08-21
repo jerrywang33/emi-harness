@@ -777,11 +777,40 @@ Run:  blocked -> active
 
 工具调用超时且无法确认外部操作是否发生等情况，不是 VerificationVerdict `blocked`。此时不能封存一个最终 VerificationResult，也不能把 Verifier RoleRun 结算为 `succeeded`；RoleRun、Run 和 Task 必须进入 `blocked`，按 Operation ID 和幂等键完成对账。结果确定后才能根据实际制品和剩余限制结算原 RoleRun、创建新 RoleRun 或终止 Run。
 
+### `accept_delivery`
+
+```text
+Task: awaiting_acceptance -> closed / completed
+Run:  active -> settled / completed
+```
+
+`accept_delivery` 由具有最终验收权限的 Human Authority 直接提交。v0.1 不为单人最终验收再创建一层 Acceptance Approval；不可修改的 TaskTransition 保存验收人、决定和精确对象引用。后续实际项目需要多人验收时，可以再复用 Approval 与 ApprovalDecision 聚合机制。
+
+转换前必须满足：
+
+- Task 为 `awaiting_acceptance`，Run 为 `active`；命令携带正确的 Task 与 Run 版本和唯一 Command ID。
+- 调用者身份已认证，并具有当前 Task 所需的最终验收角色；Agent、Executor 和 Verifier 不能代替 Human Authority 接受交付。
+- 命令精确绑定当前 ExecutionResult、verdict 为 `pass` 的 VerificationResult、验收标准和 RunManifest 摘要。
+- 被接受的 Commit 或 Patch 与验证时摘要一致，没有在 PASS 后发生变化。
+- VerificationResult、必需检查、原始证据和引用仍然有效且可以解析。
+- 所有 `acceptance` 前 ApprovalCondition 已满足并具有有效证据。
+- 不存在未结算 RoleRun、未知 Tool Operation、阻塞事项或未处理 finding。
+- Run Authorization、职责分离、权限和其他适用门禁仍然有效。
+- RunManifest 规定在完成前执行的交付操作已经由 Tool Gateway 完成并对账，正式权威证据记录已经齐全。
+
+Control Plane 必须在同一事务中重新校验上述事实，将 Task 更新为 `closed`、结果设为 `completed`，将 Run 更新为 `settled`、结果设为 `completed`，增加两者版本，并分别追加 TaskTransition 和 RunTransition。两条 Transition 必须绑定相同的 ExecutionResult、VerificationResult、验收标准和证据引用；TaskTransition 还记录验收人的身份、角色和决定理由。
+
+同一 Command ID 重复提交时必须返回第一次验收结果，不能生成第二组 Transition。事务提交后不得再创建 RoleRun 或使用该 Run 执行工具。
+
+“附条件接受”不能进入 `closed`。用户新增条件、要求修复或改变范围时，必须进入验收返工或上游变更路径。`accept_delivery` 本身不执行代码合并、部署、付款或其他副作用；如果验收决定用于授权后续操作，应先记录相应授权，完成受控操作及验证后再调用本命令。
+
+最终 Evidence Package 是对已经完整保存的权威记录和证据的派生导出，在验收事务提交后生成并可幂等重试。导出失败不能回滚已提交的验收事实，但必须形成可观测的导出失败记录并持续重试；不能在缺少验收前权威证据时先关闭 Task，再依赖导出补造证据。
+
 ## 待确认问题
 
 1. 其余合法状态转换、每次转换所需的输出与门禁，以及阻塞后的恢复规则。
 2. Approval 请求撤回、超时失效和批准后撤销如何生效。
-3. 最终验收、验收返工、Run 取消和其他终止场景的完整转换门禁。
+3. 验收返工、Run 取消和其他终止场景的完整转换门禁。
 4. 持久化数据库、事务边界、迁移方式和并发控制。
 5. Agent 启动、运行和完成各阶段发生进程中断时的恢复与对账语义。
 6. 第 3 步的自动化验收条件。

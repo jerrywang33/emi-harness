@@ -82,7 +82,8 @@ flowchart LR
     verify -->|无法确定或高风险| human["人工判断"]
     human --> verify
     verify -->|PASS| accept["用户验收"]
-    accept --> close["关闭任务<br/>封存 Evidence Package"]
+    accept --> close["关闭 Task 与 Run"]
+    close --> evidence["导出 Evidence Package"]
     verify -. 上下文缺口 .-> context
     verify -. 技术设计缺口 .-> trd
     verify -. 实现问题 .-> execute
@@ -257,6 +258,8 @@ VerificationResult 为 `pass` 时，Control Plane 只有在独立性、必需检
 VerificationResult 为 `fail` 时，Control Plane 根据经策略或 Human Authority 确认的 findingClass 分流。纯实现问题且返工限额充足时，同一 Run 保持活动并返回 `executing`；TRD、EMI Context 或 PRD 问题必须先将 Task 置为阻塞、停止并结算旧 Run，再回到对应上游阶段。Verifier 不能自行选择回退位置，次数耗尽、分类不确定或未知工具结果都不能自动重试。
 
 VerificationResult 为 `blocked` 时，Verifier 必须已经安全结束，并明确记录外部缺口、责任人和恢复条件；Control Plane 结算 Verifier RoleRun，同时阻塞 Task 与 Run。新增证据满足条件且锁定输入未变化时，原 Run 可以恢复并使用新 Verifier RoleRun 复验；需要修改锁定输入时必须终止原 Run。未知工具结果不属于这种 verdict，必须先按 Operation ID 对账。
+
+最终验收由有权限的 Human Authority 通过 `accept_delivery` 对精确 ExecutionResult 和 PASS VerificationResult 作出。所有验收条件、交付操作和权威证据满足后，Control Plane 原子将 Task 结算为 `closed/completed`、Run 结算为 `settled/completed`；本命令不调用 Agent 或执行合并、部署等副作用，附条件接受也不能关闭任务。最终 Evidence Package 是验收后的可重试派生导出，不补造验收前证据。
 
 RunTransition 和 RoleRunTransition 追加保存每次被 Control Plane 接受的状态变化、前后版本、Command ID、操作者、原因和证据引用；RoleRunTransition 还保存该次变化使用的 fencing token。它们不记录每条模型消息、Pi 事件、租约续期或被拒绝的过期写入。
 
