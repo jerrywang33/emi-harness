@@ -22,6 +22,7 @@ async function requirePath(path) {
 
 for (const path of [
   "AGENTS.md",
+  "CHANGELOG.md",
   "README.md",
   "calibrations/v0.1-local-typescript/README.md",
   "docs/decisions/0001-rebuild-on-deepseek-harness.md",
@@ -32,6 +33,7 @@ for (const path of [
   "docs/design/controlled-emi-resources-v0.1.md",
   "docs/design/executor-verifier-assurance-v0.1.md",
   "docs/design/tool-gateway-v0.1.md",
+  "docs/releases/v0.1.0.md",
   "package.json",
   "pnpm-lock.yaml",
   "pnpm-workspace.yaml",
