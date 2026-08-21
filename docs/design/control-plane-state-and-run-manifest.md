@@ -686,11 +686,63 @@ Control Plane 必须在同一事务中重新执行确定性完整性和一致性
 
 如果 VerificationResult 缺少必需检查、声称 PASS 但确定性检查失败，或者被验证输出已经变化，Control Plane 必须拒绝命令，Verifier RoleRun 保持 `settling`，不能自动改写成“带风险通过”。事务提交后发生中断时，恢复程序根据 `awaiting_acceptance` Task、`active` Run 和已结算 Verifier RoleRun 继续等待用户决定，不重复验证或自动接受。
 
+### `submit_verification_result`: `fail`
+
+`fail` 表示 Verifier 已经依据验收标准和证据证明当前交付不合格。Verifier RoleRun 可以正常 `succeeded`，但 Control Plane 必须根据经确认的 `findingClass` 判断问题是否仍在当前 Run 的授权边界内。
+
+| findingClass | 含义 | Task 处理 |
+| --- | --- | --- |
+| **`implementation`** | PRD、EMI Context、TRD 和验收标准仍然正确，实现结果不符合要求。 | 在当前 Run 内返回 `executing`。 |
+| **`trd`** | 技术设计、技术控制或验收方式需要修改。 | 终止当前 Run 后返回 `drafting_trd`。 |
+| **`context`** | EMI 适用性、司法辖区、规则或监管解释需要修改。 | 终止当前 Run 后返回 `contextualizing`。 |
+| **`prd`** | 目标、范围或业务验收标准需要修改。 | 终止当前 Run 后返回 `intake`。 |
+
+所有 FAIL 分支首先要求 Task 为 `verifying`、Run 为 `active`、Verifier RoleRun 为 `settling`，命令携带正确版本、唯一 Command ID 和当前 `leaseToken`。VerificationResult 必须已封存并绑定当前 ExecutionResult 与验收标准，verdict 为 `fail`，每项 finding 都有具体失败标准和证据，Pi 已安全结束，所有 Tool Operation 结果确定，并且不存在其他未结算 RoleRun。Control Plane 必须通过确定性策略或有效 Human Authority 记录确认 findingClass，不能直接采用 Verifier 自行选择的回退状态。
+
+#### `implementation`: 当前 Run 内返工
+
+```text
+Task:             verifying -> executing
+Run:              active -> active
+Verifier RoleRun: settling -> settled / succeeded
+```
+
+除通用条件外，还必须确认修复不会改变 PRD、ContextManifest、TRD、验收标准或 RunManifest，仍处于获准路径、工具、权限和隔离边界内；RunManifest 明确允许返工，并且 `maxRoleRuns`、Executor 尝试次数与 Run 时限仍足以创建下一次 Executor RoleRun。
+
+Control Plane 在同一事务中结算 Verifier RoleRun 并保存 FAIL 结果与证据，追加 RoleRunTransition，将 Task 改为 `executing` 并追加绑定 VerificationResult 的 TaskTransition。Run 保持 `active`。事务提交后才能创建新的 Executor RoleRun；新 RoleRun 必须以失败的 ExecutionResult 和 VerificationResult 为精确输入，不能复用旧 Executor RoleRun 或 Pi Session。
+
+#### `trd`、`context` 或 `prd`: 终止当前 Run
+
+第一阶段先停止旧授权边界：
+
+```text
+Task:             verifying -> blocked
+Run:              active -> stopping / pending superseded
+Verifier RoleRun: settling -> settled / succeeded
+```
+
+Control Plane 必须在同一事务中结算 Verifier RoleRun、保存 FAIL 证据，将 Task 改为 `blocked` 并记录恢复目标，同时将 Run 改为 `stopping`、设置 `pendingOutcome = superseded`，追加 TaskTransition、RunTransition 和 RoleRunTransition。即使此时没有其他活动 RoleRun，也统一经过停止与对账阶段，避免旧 Manifest 的执行权与新上游状态同时有效。
+
+外部操作全部对账且旧执行权已经失效后，Control Plane 在第二个事务中完成：
+
+```text
+Run:  stopping -> settled / superseded
+Task: blocked -> drafting_trd | contextualizing | intake
+```
+
+该事务必须同时追加 RunTransition 和 TaskTransition，并保留原 ExecutionResult、VerificationResult 和全部证据。Task 返回目标阶段后必须创建并重新批准相应上游制品，不能在原 Run 内修改锁定内容；新 Run 只能在重新进入 `planning` 后生成。
+
+#### 不能直接分流的情况
+
+- 问题属于 `implementation`，但角色次数、尝试次数或 Run 时限已经耗尽时，Task 进入 `blocked`，Run 以 `pendingOutcome = failed` 停止并在对账后结算为 `failed`；Human Authority 决定重新规划或取消。
+- findingClass 无法由确定性策略或有效人工判断确认时，Verifier RoleRun 可以结算并保存 FAIL 证据，但 Task 和 Run 进入 `blocked`，不得由 Verifier 自行选择回退位置。
+- 存在未知 Tool Operation 时不接受最终 FAIL；RoleRun、Run 和 Task 按未知结果进入 `blocked`，先完成对账。
+
 ## 待确认问题
 
 1. 其余合法状态转换、每次转换所需的输出与门禁，以及阻塞后的恢复规则。
 2. Approval 请求撤回、超时失效和批准后撤销如何生效。
-3. Verifier `fail` 与 `blocked`、最终验收、范围内返工、Run 终止、取消和替代的完整转换门禁。
+3. Verifier `blocked`、最终验收、验收返工、Run 取消和其他终止场景的完整转换门禁。
 4. 持久化数据库、事务边界、迁移方式和并发控制。
 5. Agent 启动、运行和完成各阶段发生进程中断时的恢复与对账语义。
 6. 第 3 步的自动化验收条件。

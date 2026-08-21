@@ -61,7 +61,9 @@ v0.1 的设计是供真实项目验证的受控基线，不以一次性覆盖所
 
 已确认 `submit_verification_result` 的 `pass` 分支只生成等待用户接受的固定交付对象。独立性、必需检查、证据、输出摘要和工具对账全部满足后，Control Plane 原子结算 Verifier RoleRun 并将 Task 从 `verifying` 改为 `awaiting_acceptance`；Run 保持活动，PASS 不自动完成任务。
 
-仍需依次确认其余合法状态转换及门禁、Approval 的撤回与失效等异常生命周期、Verifier `fail` 与 `blocked`、最终验收、范围内返工、Run 终止、取消和替代的转换门禁、持久化方案、工具结果对账细节，以及第 3 步的完整验收条件。详细讨论记录见 [`docs/design/control-plane-state-and-run-manifest.md`](../docs/design/control-plane-state-and-run-manifest.md)。
+已确认 `submit_verification_result` 的 `fail` 分支按经确认的 findingClass 路由。纯实现问题且预算充足时在同一 Run 内返回 `executing`；TRD、EMI Context 或 PRD 问题先进入阻塞并停止、结算旧 Run，再返回对应上游阶段。次数耗尽、分类不确定或未知工具结果不能自动返工。
+
+仍需依次确认其余合法状态转换及门禁、Approval 的撤回与失效等异常生命周期、Verifier `blocked`、最终验收、验收返工、Run 取消和其他终止场景的转换门禁、持久化方案、工具结果对账细节，以及第 3 步的完整验收条件。详细讨论记录见 [`docs/design/control-plane-state-and-run-manifest.md`](../docs/design/control-plane-state-and-run-manifest.md)。
 
 ### 第 2 步实际结果
 
