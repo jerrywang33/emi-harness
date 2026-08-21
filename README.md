@@ -256,6 +256,8 @@ VerificationResult 为 `pass` 时，Control Plane 只有在独立性、必需检
 
 VerificationResult 为 `fail` 时，Control Plane 根据经策略或 Human Authority 确认的 findingClass 分流。纯实现问题且返工限额充足时，同一 Run 保持活动并返回 `executing`；TRD、EMI Context 或 PRD 问题必须先将 Task 置为阻塞、停止并结算旧 Run，再回到对应上游阶段。Verifier 不能自行选择回退位置，次数耗尽、分类不确定或未知工具结果都不能自动重试。
 
+VerificationResult 为 `blocked` 时，Verifier 必须已经安全结束，并明确记录外部缺口、责任人和恢复条件；Control Plane 结算 Verifier RoleRun，同时阻塞 Task 与 Run。新增证据满足条件且锁定输入未变化时，原 Run 可以恢复并使用新 Verifier RoleRun 复验；需要修改锁定输入时必须终止原 Run。未知工具结果不属于这种 verdict，必须先按 Operation ID 对账。
+
 RunTransition 和 RoleRunTransition 追加保存每次被 Control Plane 接受的状态变化、前后版本、Command ID、操作者、原因和证据引用；RoleRunTransition 还保存该次变化使用的 fencing token。它们不记录每条模型消息、Pi 事件、租约续期或被拒绝的过期写入。
 
 RoleRun 在创建 Pi Session 前先持久化，并通过带单调递增 fencing token 的 Worker 租约执行。Runtime 事件、状态写入和 Tool Gateway 请求都必须携带当前 token，Control Plane 和 Tool Gateway 拒绝旧 token，防止租约过期后的旧 Worker 再次修改权威状态或发起新操作。租约失效前已经受理的外部操作不会被 token 自动撤销，必须按持久化 Operation ID 和幂等键完成对账后再决定恢复或重试。

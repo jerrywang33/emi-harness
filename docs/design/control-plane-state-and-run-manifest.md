@@ -738,11 +738,50 @@ Task: blocked -> drafting_trd | contextualizing | intake
 - findingClass 无法由确定性策略或有效人工判断确认时，Verifier RoleRun 可以结算并保存 FAIL 证据，但 Task 和 Run 进入 `blocked`，不得由 Verifier 自行选择回退位置。
 - 存在未知 Tool Operation 时不接受最终 FAIL；RoleRun、Run 和 Task 按未知结果进入 `blocked`，先完成对账。
 
+### `submit_verification_result`: `blocked`
+
+```text
+Task:             verifying -> blocked
+Run:              active -> blocked / resumeTo active
+Verifier RoleRun: settling -> settled / succeeded
+```
+
+VerificationVerdict `blocked` 只表示 Verifier 已安全完成当前工作，并明确识别出一个外部缺口，现有证据不足以可靠形成 PASS 或 FAIL。它不是失败结论，也不能用于掩盖已经能够证明的测试失败、实现缺陷或控制缺口。
+
+转换前必须满足：
+
+- Task 为 `verifying`，Run 为 `active`，Verifier RoleRun 为 `settling`；命令携带正确版本、唯一 Command ID 和当前 `leaseToken`。
+- VerificationResult 已持久化并封存，verdict 为 `blocked`，精确绑定当前 ExecutionResult 和验收标准。
+- 结构化 `block` 具有明确 `reasonCode`、责任人和可以检查的恢复条件，findings 与证据能够证明当前确实无法下结论。
+- Pi 已安全结束，Verifier RoleRun 的输出完整，所有 Tool Operation 结果确定，不存在未知副作用。
+- 不能通过现有证据形成 PASS 或 FAIL，且不存在其他未结算 RoleRun。
+
+Control Plane 必须在同一事务中结算 Verifier RoleRun 为 `succeeded` 并保存 VerificationResult 与证据，追加 RoleRunTransition，将 Task 改为 `blocked` 并记录恢复目标 `verifying`，将 Run 改为 `blocked`、设置 `resumeToStatus = active` 和对应 `reasonCode`，然后追加 TaskTransition 和 RunTransition。阻塞期间不能创建新 RoleRun、调用 Agent 或执行新的有副作用工具。
+
+#### `resolve_verification_block`
+
+新增证据已经满足恢复条件，并且不会改变任何锁定输入时，可以恢复原 Run：
+
+```text
+Task: blocked -> verifying
+Run:  blocked -> active
+```
+
+命令必须携带正确 Task 与 Run 版本、唯一 Command ID、原 blocked VerificationResult 以及新增的版本化解除阻塞证据。Control Plane 必须确认责任人或有权策略已经接受该证据，PRD、ContextManifest、TRD、RunManifest、目标代码输出、Run Authorization、权限和隔离边界均未变化，并且角色次数和 Run 时限足以进行新一轮验证。
+
+全部满足后，Control Plane 在同一事务中清除 Run 当前阻塞字段、更新 Task 与 Run、增加两者版本并分别追加 TaskTransition 和 RunTransition。事务提交后创建新的 Verifier RoleRun，显式绑定原 ExecutionResult、blocked VerificationResult 和新增证据；旧 Verifier RoleRun 和 Pi Session 不得复用。
+
+如果解除阻塞需要修改 PRD、ContextManifest、TRD、RunManifest 或其他锁定输入，原 Run 不能恢复，必须从 `blocked` 转为 `stopping`、设置 `pendingOutcome = superseded`，完成对账并结算后再返回对应上游阶段。若角色次数或时限不足，则按 Run 失败停止，不得通过解除阻塞绕过 Manifest 限制。
+
+#### 未知 Tool Operation
+
+工具调用超时且无法确认外部操作是否发生等情况，不是 VerificationVerdict `blocked`。此时不能封存一个最终 VerificationResult，也不能把 Verifier RoleRun 结算为 `succeeded`；RoleRun、Run 和 Task 必须进入 `blocked`，按 Operation ID 和幂等键完成对账。结果确定后才能根据实际制品和剩余限制结算原 RoleRun、创建新 RoleRun 或终止 Run。
+
 ## 待确认问题
 
 1. 其余合法状态转换、每次转换所需的输出与门禁，以及阻塞后的恢复规则。
 2. Approval 请求撤回、超时失效和批准后撤销如何生效。
-3. Verifier `blocked`、最终验收、验收返工、Run 取消和其他终止场景的完整转换门禁。
+3. 最终验收、验收返工、Run 取消和其他终止场景的完整转换门禁。
 4. 持久化数据库、事务边界、迁移方式和并发控制。
 5. Agent 启动、运行和完成各阶段发生进程中断时的恢复与对账语义。
 6. 第 3 步的自动化验收条件。
