@@ -135,6 +135,7 @@ Control Plane 使用以下相互关联的记录保存权威事实，而不是从
 | **Task** | 保存一个用户交付目标、当前阶段、版本和最终结果。 | Control Plane 判断任务当前处于什么阶段的依据。 |
 | **TaskTransition** | 追加记录每次状态变化的原状态、目标状态、操作者、原因以及审批和证据引用。 | 与 Task 状态在同一事务中写入，形成不可省略的状态变化历史。 |
 | **Approval** | 保存绑定确定版本对象的待审批请求，并聚合所需决定。 | 被审批对象变化后，原请求不能继续使用。 |
+| **ApprovalTransition** | 追加保存审批请求的创建、聚合结论、撤回、过期和撤销。 | 生命周期不可改写，批准失效不能删除已经发生的决定或执行事实。 |
 | **ApprovalDecision** | 追加保存 Human Authority 作出的每项决定、理由、条件和证据。 | 决定不可原地修改，并且必须绑定 Approval 版本。 |
 | **Run** | 保存一次受控交付尝试的当前状态、版本、最终结果及其 Manifest 关联。 | Control Plane 判断该次尝试是否仍可执行和恢复的依据。 |
 | **RunTransition** | 追加记录 Run 每次被接受的状态变化。 | 与 Run 当前状态在同一事务中写入，不保存未被接受的状态请求。 |
@@ -328,7 +329,7 @@ v0.1 中，EMI Harness 和用于校准的目标 EMI 应用统一使用 TypeScrip
 | **EMI 领域资产** | Markdown、YAML、JSON Schema、Git | 优先采用可审查、可版本化和可比较的开放格式；检索索引不能代替权威源文件。 |
 | **服务与接口契约** | [Fastify](https://fastify.dev/docs/latest/)、JSON Schema、OpenAPI | 只在需要 HTTP 接口时引入；输入验证、输出序列化和接口文档使用同一份受控 Schema。 |
 | **测试与模块边界** | Vitest、Testcontainers、静态依赖边界检查 | 单元、集成、契约和验收测试分层；CI 必须阻止跨业务模块的未授权依赖。 |
-| **数据与可观测性** | PostgreSQL 18、受控数据库迁移、OpenTelemetry | PostgreSQL 作为事务数据的默认候选；最终选择和数据拓扑由具体 TRD 决定。 |
+| **数据与可观测性** | v0.1 使用单写进程 SQLite 和受控迁移；OpenTelemetry 按需接入 | 先验证事务状态与恢复模型；多实例或正式部署再通过 ADR 评估 PostgreSQL，不把数据库实现泄露到领域端口。 |
 | **按需基础设施** | Kafka、Redis、搜索引擎及其他中间件 | 只有在 TRD 明确使用场景、失效策略和验收方式后才能引入。 |
 
 ### 默认 TypeScript 项目结构：`typescript-modular-monolith`
@@ -373,4 +374,4 @@ v0.1 中，EMI Harness 和用于校准的目标 EMI 应用统一使用 TypeScrip
 
 ## 当前阶段
 
-本 README 描述 EMI Harness 的目标定位和架构，不表示其中全部能力已经实现。旧版文件式 Harness 已删除；Pi Runtime 的最小受控嵌入契约已经实现并通过无网络契约测试，但它还不能独立完成 EMI 研发任务。项目下一步建设持久化任务状态与运行清单，之后再逐步接入受控资源、外部工具执行和独立验证；只有完成端到端验证的能力才视为可用。阶段目标、实施进度和完成条件以 [`roadmap/README.md`](roadmap/README.md) 为准。
+本 README 描述 EMI Harness 的目标定位和架构，不表示其中全部能力已经实现。旧版文件式 Harness 已删除；Pi Runtime 的最小受控嵌入契约已经实现并通过无网络契约测试，Control Plane 状态、运行清单、持久化和恢复边界也已完成设计，当前正在实现最小持久化闭环。之后再依次接入受控资源、外部工具执行和独立验证；只有完成端到端验证的能力才视为可用。阶段目标、实施进度和完成条件以 [`roadmap/README.md`](roadmap/README.md) 为准。

@@ -25,6 +25,9 @@ for (const path of [
   "README.md",
   "docs/decisions/0001-rebuild-on-deepseek-harness.md",
   "docs/decisions/0002-adopt-pi-runtime-with-emi-control-plane.md",
+  "docs/decisions/0003-use-sqlite-for-v0.1-control-plane.md",
+  "docs/design/control-plane-persistence-and-recovery.md",
+  "docs/design/control-plane-state-and-run-manifest.md",
   "package.json",
   "pnpm-lock.yaml",
   "pnpm-workspace.yaml",
@@ -38,8 +41,8 @@ const rootPackage = JSON.parse(await readFile(join(root, "package.json"), "utf8"
 if (rootPackage.packageManager !== "pnpm@11.7.0") {
   errors.push("package.json must pin pnpm@11.7.0");
 }
-if (rootPackage.engines?.node !== ">=22.19.0") {
-  errors.push("package.json must use the Pi Node.js compatibility range");
+if (rootPackage.engines?.node !== ">=24.15.0") {
+  errors.push("package.json must use the Node.js baseline required by Control Plane SQLite");
 }
 
 const workspace = await readFile(join(root, "pnpm-workspace.yaml"), "utf8");

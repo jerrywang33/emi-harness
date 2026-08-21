@@ -1,6 +1,6 @@
 # Control Plane 任务状态与运行清单设计
 
-- 状态：设计中
+- 状态：已接受，进入实现
 - 对应 Roadmap：v0.1 第 3 步
 - 最后更新：2026-08-21
 
@@ -18,6 +18,7 @@
 Task
 ├── TaskTransition[]
 ├── Approval[]
+│   ├── ApprovalTransition[]
 │   └── ApprovalDecision[]
 └── Run[]
     ├── RunTransition[]
@@ -32,6 +33,7 @@ Task
 | **Task** | 表示一个用户交付目标，保存当前阶段、当前版本和最终结果。 |
 | **TaskTransition** | 追加记录状态变化、操作者、原因以及审批和证据引用。 |
 | **Approval** | 保存绑定确定对象标识、版本和哈希的待审批请求，并聚合所需 Human Authority 作出的决定。 |
+| **ApprovalTransition** | 追加记录审批请求的创建、聚合结论、撤回、过期和撤销，不用修改历史决定伪造当前有效性。 |
 | **ApprovalDecision** | 追加记录一个 Human Authority 对该请求作出的决定、理由、条件和证据，不允许原地修改。 |
 | **Run** | 保存一次受控交付尝试的当前状态、版本、最终结果及其 Manifest 关联。 |
 | **RunTransition** | 追加记录 Run 每次被 Control Plane 接受的状态变化、原因和证据。 |
@@ -806,11 +808,64 @@ Control Plane 必须在同一事务中重新校验上述事实，将 Task 更新
 
 最终 Evidence Package 是对已经完整保存的权威记录和证据的派生导出，在验收事务提交后生成并可幂等重试。导出失败不能回滚已提交的验收事实，但必须形成可观测的导出失败记录并持续重试；不能在缺少验收前权威证据时先关闭 Task，再依赖导出补造证据。
 
-## 待确认问题
+### `request_acceptance_rework`
 
-1. 其余合法状态转换、每次转换所需的输出与门禁，以及阻塞后的恢复规则。
-2. Approval 请求撤回、超时失效和批准后撤销如何生效。
-3. 验收返工、Run 取消和其他终止场景的完整转换门禁。
-4. 持久化数据库、事务边界、迁移方式和并发控制。
-5. Agent 启动、运行和完成各阶段发生进程中断时的恢复与对账语义。
-6. 第 3 步的自动化验收条件。
+用户没有接受当前交付，但要求继续修改时，必须提交版本化 AcceptanceFeedback，精确绑定当前 ExecutionResult、PASS VerificationResult、验收标准、问题分类和证据。Control Plane 不允许通过自由文本直接把 Task 改回执行状态。
+
+| 已确认分类 | 处理 |
+| --- | --- |
+| **`implementation`** | 当前 Manifest 范围、权限、时限和角色次数仍足够时，Task 从 `awaiting_acceptance` 回到 `executing`，Run 保持 `active`；事务提交后创建新的 Executor RoleRun。 |
+| **`trd`**、**`context`** 或 **`prd`** | Task 先进入 `blocked`，Run 进入 `stopping` 且 `pendingOutcome = superseded`；角色和工具操作全部结算后，Run 以 `superseded` 结束，Task 返回对应上游状态。 |
+| **无法可靠分类** | Task 与 Run 进入 `blocked`，由 Human Authority 明确分类；不得让 Agent 自行选择影响审批范围的回流路径。 |
+
+实现内返工必须在一个事务中验证 Task、Run、Manifest、交付对象和反馈版本，将 Task 改回 `executing` 并追加 TaskTransition。旧 ExecutionResult 与 VerificationResult 保持不可修改，新 Executor 必须把它们和 AcceptanceFeedback 都作为显式输入。返工后仍需独立 Verifier 重新验证，不能复用原 PASS。
+
+### `cancel_task`
+
+具有取消权限的 Human Authority 可以取消任何未关闭 Task，但取消请求不能跳过正在发生的副作用对账：
+
+| 当前情况 | 原子处理或后续处理 |
+| --- | --- |
+| **不存在未结算 Run** | Task 直接改为 `closed / cancelled`。 |
+| **Run 等待授权** | Approval 撤回、Run 改为 `settled / cancelled`、Task 改为 `closed / cancelled`。 |
+| **Run 已授权、活动或正常阻塞** | Task 改为 `blocked`，Run 改为 `stopping` 且 `pendingOutcome = cancelled`；停止 Agent 并对账后再结算 Run 和 Task。 |
+| **存在未知 Tool Operation** | Run 改为 `blocked / resumeToStatus = stopping`；结果确定前禁止关闭 Task 或重复操作。 |
+
+`finish_run_stop` 只能在所有 RoleRun 已安全结算、Tool Operation 结果确定且必要证据已保存后执行。它按 `pendingOutcome` 结算 Run；取消时同时把 Task 改为 `closed / cancelled`，替代或失败时把 Task 保持 `blocked`，再由独立恢复命令返回获准的上游状态。所有取消命令都要求 Command ID、预期版本、操作者、理由和证据，重复命令返回第一次结果。
+
+### Approval 生命周期
+
+Approval 当前状态为 `pending`、`approved`、`approved_with_conditions`、`changes_requested`、`rejected`、`withdrawn`、`expired` 或 `revoked`。ApprovalDecision 永远只追加；ApprovalTransition 记录聚合状态如何形成。任何状态变化都与受影响的 Task 或 Run 后果在同一事务中提交。
+
+- `withdraw_approval` 只适用于 `pending`，由请求者或有权限人员执行；已存在的个人决定保留，聚合请求变为 `withdrawn`。
+- `expire_approval` 由确定性时钟和审批策略中的截止时间触发，只适用于 `pending`；通知延迟不能延长有效期。
+- `revoke_approval` 只适用于已经批准的请求，必须由有撤销权限的 Human Authority 提供原因和证据。撤销不能删除决定，也不能宣称过去未曾授权。
+- 尚未激活 Run 的授权失效时，Run 结算为 `rejected`，Task 回到 `planning` 或进入 `blocked`；已经执行的 Run 授权或其前置批准失效时，Task 与 Run 必须先进入停止或阻塞路径，不允许继续创建 RoleRun。
+- 已完成 Task 的历史批准被发现有问题时，不改写 Task、Run 或 Evidence；创建安全事件和新的整改 Task，由数据保留与事件响应策略处理。
+
+Approval 的对象 ID、版本、摘要、审批策略版本、要求角色、截止时间和作者独立性在创建后不可修改。审批人的身份、角色和决定时间来自受信身份边界，不能由 Agent 参数声明。
+
+## 持久化与恢复决定
+
+v0.1 采用单 Control Plane 写进程和 SQLite，详细决定、事务边界、表约束、幂等与恢复算法见 [Control Plane 持久化与恢复设计](control-plane-persistence-and-recovery.md) 和 [ADR 0003](../decisions/0003-use-sqlite-for-v0.1-control-plane.md)。核心规则如下：
+
+- 当前记录、追加式 Transition、审批决定、命令幂等结果和待发送事件在同一数据库事务中提交。
+- 写事务使用 `BEGIN IMMEDIATE`、外键、WAL 和忙等待；所有可变聚合使用单调版本进行乐观并发检查。
+- 数据库以部分唯一索引保证一个 Task 最多一个未结算 Run、一个 Run 最多一个未结算 RoleRun，不依赖 Agent 先查后写。
+- Command ID 与规范请求摘要一起持久化；同一 ID 同一请求返回原结果，同一 ID 不同请求拒绝。
+- 不可变 Artifact、Manifest、Decision 和 Transition 由触发器禁止更新、删除；摘要在写入和读取时校验。
+- Runtime 调用、Tool Gateway、通知和 Evidence 导出都发生在权威事务之外，通过 outbox、Operation ID 和幂等键衔接，不在数据库事务中执行外部副作用。
+- 重启后扫描未结算 Run、RoleRun、Tool Operation 和 outbox；先取得新 fencing token，再根据已保存状态继续或阻塞，禁止从 Pi Session 推断进度。
+
+## 第 3 步自动化验收条件
+
+第 3 步实现只有同时通过以下检查才算完成：
+
+1. RunManifest 对等价输入产生相同 RFC 8785 规范 JSON 和 SHA-256，封存后无法修改。
+2. Task、Approval、Run、RoleRun 及对应 Transition 可以持久化并在关闭、重开数据库后恢复。
+3. 每个命令验证当前状态、预期版本、权限和门禁；失败时不留下部分更新。
+4. 同一 Command ID 的相同请求可安全重放，不同请求被拒绝；并发过期版本不能覆盖新状态。
+5. 数据库约束阻止同一 Task 的两个未结算 Run 和同一 Run 的两个未结算 RoleRun。
+6. Run Authorization、角色启动、执行交接、验证结果、验收返工、取消和最终验收的多记录变化保持原子。
+7. 租约接管会增加 fencing token，旧 token 无法写状态或申请新工具操作。
+8. 针对 `prepared`、`starting`、`running`、`settling`、`blocked` 和待发送 outbox 的恢复计划只依赖权威记录，并且可以幂等重复计算。

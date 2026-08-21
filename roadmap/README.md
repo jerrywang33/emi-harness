@@ -18,14 +18,14 @@ v0.1 的设计是供真实项目验证的受控基线，不以一次性覆盖所
 | --- | --- | --- | --- |
 | 1 | 完成运行时选型，建立 Pi Runtime 与 EMI Control Plane 边界 | ADR 0002、一致的 README、Roadmap、仓库规则和 pnpm 工作区 | 已完成 |
 | 2 | 验证并锁定 Pi SDK 的受控嵌入契约 | 精确 Pi 版本、最小 `PiRuntimePort`、受控 ResourceLoader、精确工具白名单和事件转换验证 | 已完成 |
-| 3 | 实现最小持久化任务状态与运行清单 | 可恢复的任务状态、角色运行记录、人工门禁和版本化运行清单 | 设计中 |
+| 3 | 实现最小持久化任务状态与运行清单 | 可恢复的任务状态、角色运行记录、人工门禁和版本化运行清单 | 实现中 |
 | 4 | 实现最小 Controlled EMI Resources | 一条带权威来源、版本、适用范围、状态和哈希的 EMI Context，一个受控 Skill，以及读取和校验方式 | 待开始 |
 | 5 | 实现最小 Tool Gateway 与隔离执行边界 | 一个带权限决策、操作意图、幂等键、执行结果和中断后对账的可测试工具调用 | 待开始 |
 | 6 | 实现 Executor、Verifier 与最小验证证据 | 独立 Pi Sessions、失败回流、人工批准点，以及不能由 Executor 自行宣布通过的检查 | 待开始 |
 | 7 | 接入本地 TypeScript 目标项目并执行完整任务 | 可重复运行的设计到交付过程、失败恢复和完整 Evidence Package | 待开始 |
 | 8 | 用户验收并决定 v0.2 | 验收结论、实际问题和下一阶段范围 | 待开始 |
 
-下一步只执行第 3 步，先定义最小任务状态、运行清单和持久化边界，再实现对应包；不同时创建其他目标包或占位实现。
+下一步只执行第 3 步，按已接受的状态、运行清单和 SQLite 持久化设计实现对应包；不同时创建其他目标包或占位实现。
 
 ### 第 3 步设计进度
 
@@ -67,7 +67,11 @@ v0.1 的设计是供真实项目验证的受控基线，不以一次性覆盖所
 
 已确认 `accept_delivery` 由有权限的 Human Authority 对精确交付对象直接提交，不额外创建单人 Acceptance Approval。所有验收条件、交付操作和权威证据满足后，Control Plane 原子结算 Task 与 Run；命令不执行副作用，附条件接受不能关闭任务，最终 Evidence Package 只作为验收后的可重试派生导出。
 
-仍需依次确认其余合法状态转换及门禁、Approval 的撤回与失效等异常生命周期、验收返工、Run 取消和其他终止场景的转换门禁、持久化方案、工具结果对账细节，以及第 3 步的完整验收条件。详细讨论记录见 [`docs/design/control-plane-state-and-run-manifest.md`](../docs/design/control-plane-state-and-run-manifest.md)。
+已确认验收返工必须绑定版本化 AcceptanceFeedback：纯实现问题可以在同一个 Run 内重新执行和验证，锁定输入变化必须停止并替代 Run，无法分类时必须阻塞。取消不能跳过 Agent 停止和 Tool Operation 对账；存在未知副作用时 Task 不能关闭。
+
+已确认 Approval 使用追加式 Decision 与 Transition 保存完整生命周期。待审批可以撤回或按确定性时钟过期，批准后只能追加撤销事实；撤销不能删除历史授权，已经开始的 Run 必须进入停止或阻塞路径。
+
+已接受 [ADR 0003](../docs/decisions/0003-use-sqlite-for-v0.1-control-plane.md)：v0.1 由单 Control Plane 写进程使用 SQLite，依靠事务、版本、部分唯一索引、Command 幂等记录、outbox 和 RoleRun fencing token 保证状态与恢复边界。详细设计和第 3 步自动化验收条件见 [任务状态与运行清单设计](../docs/design/control-plane-state-and-run-manifest.md) 与 [持久化和恢复设计](../docs/design/control-plane-persistence-and-recovery.md)。
 
 ### 第 2 步实际结果
 
