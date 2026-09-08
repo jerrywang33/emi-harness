@@ -37,6 +37,7 @@ export class TestIds implements IdGenerator {
 }
 
 export interface MutableAuthorityState {
+  approvalSupported: boolean;
   runStatus: string;
   role: "coordinator" | "executor" | "verifier";
   roleRunStatus: string;
@@ -47,6 +48,9 @@ export interface MutableAuthorityState {
 
 export function authorityFixture(state: MutableAuthorityState): ControlPlaneAuthorityReader {
   return {
+    assertRunAuthorization: () => {
+      if (!state.approvalSupported) throw new Error("Historical conditional approval is unsupported");
+    },
     getRun: (runId) => ({ runId, status: state.runStatus }),
     getRoleRun: (roleRunId) => ({
       roleRunId,
@@ -79,6 +83,7 @@ export function authorityFixture(state: MutableAuthorityState): ControlPlaneAuth
 
 export function authorizedState(): MutableAuthorityState {
   return {
+    approvalSupported: true,
     runStatus: "active",
     role: "executor",
     roleRunStatus: "running",

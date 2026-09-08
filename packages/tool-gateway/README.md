@@ -19,7 +19,7 @@ const gateway = new SqliteToolGateway({
 ## 输入、输出与入口
 
 - [types.ts](src/types.ts) 定义工具请求、权限快照、策略端口、执行端口和结果；[definitions.ts](src/definitions.ts) 固定当前工具、策略与本地隔离配置的引用。
-- [control-plane-authority.ts](src/control-plane-authority.ts) 读取当前 Run、RoleRun、租约和精确工具授权；[workspace-write-policy.ts](src/workspace-write-policy.ts) 检查写入字段、允许路径、内容与旧摘要条件。
+- [control-plane-authority.ts](src/control-plane-authority.ts) 读取当前 Run、RoleRun、租约和精确工具授权，并通过 Reader 的 `assertRunAuthorization(runId)` 检查批准仍然有效；历史附条件批准或非空 Manifest 条件不能授权新操作。[workspace-write-policy.ts](src/workspace-write-policy.ts) 检查写入字段、允许路径、内容与旧摘要条件。
 - [sqlite-tool-gateway.ts](src/sqlite-tool-gateway.ts) 的 `invoke()` 接收 Run/RoleRun、token、call ID、工具引用与输入，返回 Operation、Decision 和可用的 Result；拒绝和已知失败也应由调用方处理，不能只检查 Promise 是否抛错。
 - [subprocess-workspace-executor.ts](src/subprocess-workspace-executor.ts) 将仓库 ID 绑定到真实根目录，通过标准输入输出调用 [workspace-worker.mjs](worker/workspace-worker.mjs)。Worker 负责文件前置条件、写入和事后检查。
 - Integration 的 Gateway Runtime tool 是当前调用方；本包独立持久化操作账本，Integration 再把相关快照保存到 Evidence Store。

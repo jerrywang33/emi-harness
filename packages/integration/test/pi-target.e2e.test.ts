@@ -18,7 +18,7 @@ import {
   WORKSPACE_WRITE_TOOL_REF,
   WorkspaceWritePolicy,
 } from "@emi-harness/tool-gateway";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   CandidateEvidencePackageBuilder,
@@ -218,11 +218,12 @@ describe("local TypeScript target with Pi AgentSession", () => {
 
       const contextRef = fixture.manifest.roles.find((role) => role.role === "executor")!.resources[0]!;
       const controlledContext = await fixture.resourceRegistry.load(contextRef, "executor");
-      const candidate = new CandidateEvidencePackageBuilder({
+      const candidateBuilder = new CandidateEvidencePackageBuilder({
         controlPlane: fixture.controlPlane,
         toolGateway: fixture.gateway,
         evidenceStore: fixture.evidence,
-      }).build({
+      });
+      const candidateRequest = {
         packageId: "candidate-run-1",
         taskId: "task-1",
         runId: "run-1",
@@ -232,7 +233,13 @@ describe("local TypeScript target with Pi AgentSession", () => {
           manifest: controlledContext.manifest,
           content: controlledContext.content,
         }))],
+      };
+      const approvalCheck = vi.spyOn(fixture.controlPlane, "assertRunAuthorization").mockImplementationOnce(() => {
+        throw new Error("Historical conditional approval cannot authorize delivery");
       });
+      expect(() => candidateBuilder.build(candidateRequest)).toThrow("Historical conditional approval");
+      approvalCheck.mockRestore();
+      const candidate = candidateBuilder.build(candidateRequest);
       expect(candidate.content.acceptance).toEqual({
         status: "pending",
         taskStatus: "awaiting_acceptance",

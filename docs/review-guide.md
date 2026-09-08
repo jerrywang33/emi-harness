@@ -99,6 +99,7 @@ EMI Harness 用 Pi 执行 Agent 工作，自有代码管理任务状态、授权
 | 要求 | 实现入口 | 测试入口与核对方向 |
 | --- | --- | --- |
 | 命令重放不能产生第二次状态变化 | [Control Plane](../packages/control-plane/src/sqlite-control-plane.ts) 的 `command()` | [生命周期测试](../packages/control-plane/test/lifecycle.integration.test.ts)、[约束测试](../packages/control-plane/test/constraints.integration.test.ts)：相同 Command ID 的请求摘要、结果重放和版本冲突 |
+| v0.1 不接受附条件批准 | Control Plane 的审批、Manifest 和有效授权检查；Gateway Authority | [控制面测试目录](../packages/control-plane/test)、[工具测试目录](../packages/tool-gateway/test)：拒绝 `approved_with_conditions`、非空决定条件和 Manifest 条件；历史条件记录不能继续放行，普通批准仍可完成闭环 |
 | 旧 Worker 不能继续写状态或发起新操作 | Control Plane 的租约检查、[Gateway Authority](../packages/tool-gateway/src/control-plane-authority.ts) | [控制面恢复测试](../packages/control-plane/test/recovery.integration.test.ts)、[Gateway 测试](../packages/tool-gateway/test/gateway.integration.test.ts)：过期 token 和取消；另检查撤回审批与执行中操作的交互是否有覆盖 |
 | Pi 不自动加载环境资源或默认工具 | [受控 Session 工厂](../packages/runtime-pi/src/controlled-pi-session-factory.ts)、[ResourceLoader](../packages/runtime-pi/src/controlled-resource-loader.ts) | [Runtime 测试目录](../packages/runtime-pi/test)：空白名单、实际工具集、环境资源、上游契约和公共类型边界 |
 | 资源引用与内容一致 | [Registry](../packages/resource-registry/src/file-resource-registry.ts) 的 `load()` | [资源安全测试](../packages/resource-registry/test/security.integration.test.ts)：索引、Manifest 原文摘要、内容摘要、角色和路径 |

@@ -16,6 +16,7 @@ interface AuthorityRolePlan {
 }
 
 export interface ControlPlaneAuthorityReader {
+  assertRunAuthorization(runId: string): void;
   getRun(runId: string): { runId: string; status: string };
   getRoleRun(roleRunId: string): {
     roleRunId: string;
@@ -58,6 +59,11 @@ export class ControlPlaneRoleRunAuthority implements RoleRunAuthorityPort {
     const roleRun = this.reader.getRoleRun(request.roleRunId);
     if (run.runId !== request.runId || run.status !== "active") {
       fail("authorization_denied", `Run is not active: ${request.runId}`);
+    }
+    try {
+      this.reader.assertRunAuthorization(run.runId);
+    } catch {
+      fail("authorization_denied", `Run approvals do not authorize further work: ${request.runId}`);
     }
     if (roleRun.runId !== run.runId || roleRun.status !== "running") {
       fail("authorization_denied", `RoleRun is not running in Run: ${request.roleRunId}`);

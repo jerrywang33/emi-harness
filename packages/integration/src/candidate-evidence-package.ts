@@ -88,6 +88,7 @@ export class CandidateEvidencePackageBuilder {
     if (manifestRecord.digest !== run.manifestDigest || manifestRecord.manifest.task.taskId !== task.taskId) {
       fail("invalid_configuration", "RunManifest does not match the candidate Task and Run");
     }
+    this.config.controlPlane.assertRunAuthorization(run.runId);
 
     const roleRuns = this.config.controlPlane.listRoleRuns(run.runId);
     if (
@@ -108,7 +109,7 @@ export class CandidateEvidencePackageBuilder {
       const decisions = this.config.controlPlane.listApprovalDecisions(approvalId);
       if (
         approval.taskId !== task.taskId ||
-        !["approved", "approved_with_conditions"].includes(approval.status) ||
+        approval.status !== "approved" ||
         decisions.length === 0
       ) {
         fail("invalid_configuration", `Approval is not exportable: ${approvalId}`);

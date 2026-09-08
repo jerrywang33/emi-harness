@@ -60,6 +60,7 @@ export interface RecordApprovalDecisionCommand extends CommandRequest {
   authorityRole: string;
   decision: ApprovalDecisionValue;
   reason: string;
+  /** v0.1 requires an empty array and rejects approved_with_conditions. */
   conditions: readonly ApprovalCondition[];
   evidenceRefs: readonly string[];
   returnToStatus?: "intake" | "contextualizing" | "drafting_trd";

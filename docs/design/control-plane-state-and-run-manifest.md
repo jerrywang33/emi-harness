@@ -2,7 +2,7 @@
 
 - 状态：已实现 v0.1
 - 对应 Roadmap：v0.1 第 3 步
-- 最后更新：2026-08-21
+- 最后更新：2026-09-08
 
 ## 目标
 
@@ -11,6 +11,8 @@
 本步不实现完整工作流平台、受控 EMI 资源、Tool Gateway、独立验证或端到端交付；这些能力继续按 Roadmap 后续步骤接入。
 
 本设计是用于真实项目校准的 v0.1 基线。实际运行发现遗漏或摩擦后，可以根据对应 Task、Run 和 Evidence 提出修改，但每项修改都必须经过讨论、版本化文档和自动化检查后进入新版本。任何修改不得改变已经封存的 RunManifest、历史状态或证据，也不得在 v0.1 中由 Harness 自动改写自身规则。
+
+2026-09-08 已确认收窄审批范围：v0.1 不支持附条件批准。准备工作完成后，Human Authority 才能明确批准；需要修改审批对象时使用 `changes_requested`。新决定拒绝 `approved_with_conditions` 和非空 `conditions`，新 RunManifest 的 `approvalConditions` 必须为空。历史附条件记录保留用于追溯，但不得作为继续封存、执行或交付的有效批准；不自动将其转换成正式批准。
 
 ## 已确认的记录
 
@@ -75,10 +77,10 @@ Run 表示一个已批准 TRD 版本在固定输入、权限和目标代码基�
 - 目标仓库的固定基线提交；Executor 在隔离工作区内产生的获准输出不视为外部基线变化。
 - Pi、Adapter、Harness 或模型版本。
 - 角色、资源、Skill、Prompt、工具白名单或策略。
-- 执行范围、权限、隔离方式或审批条件。
+- 执行范围、权限或隔离方式。
 - 已批准的重试或返工限制。
 
-RoleRun 状态、Pi Session ID、代码和测试制品、Verifier 结果、工具操作证据、条件满足证据以及获准范围内的返工属于运行事实或输出，不修改 RunManifest。每个 RoleRun 必须绑定其实际输入和输出制品，防止 Verifier 检查过期的 Executor 结果。
+RoleRun 状态、Pi Session ID、代码和测试制品、Verifier 结果、工具操作证据以及获准范围内的返工属于运行事实或输出，不修改 RunManifest。每个 RoleRun 必须绑定其实际输入和输出制品，防止 Verifier 检查过期的 Executor 结果。
 
 v0.1 的并发边界如下：
 
@@ -330,7 +332,7 @@ type RunManifestV1 = {
 
   policies: {
     policyRefs: VersionedRef[];
-    approvalConditions: ApprovalCondition[];
+    approvalConditions: ApprovalCondition[]; // 保留历史格式；v0.1 新 Manifest 必须为 []。
     maxRoleRuns: number;
     maxDurationMs: number;
   };
@@ -409,7 +411,7 @@ RunManifest 可以包含 TRD 等前置 Approval 引用，但授权执行该 Mani
 - Manifest 中所有资源、策略、工具和环境引用都能从权威来源解析且摘要一致。
 - 目标仓库仍处于声明的基线 commit，或者准确匹配已批准 Patch。
 - 当前 Task 不存在另一个待授权或活动 Run。
-- 所有 `planning` 前 ApprovalCondition 已满足并具有有效证据。
+- 前置批准均为无附加条件的正式批准，Manifest 的 `approvalConditions` 为空。
 
 Manifest 使用 RFC 8785 JSON Canonicalization Scheme 生成规范 JSON，以 UTF-8 编码计算 SHA-256，并按 `sha256:{lowercase hex}` 保存摘要。没有顺序语义的数组必须按 Schema 规定的稳定键排序。
 
@@ -427,11 +429,11 @@ v0.1 的每个 Run 都要求 Human Authority 明确授权，不允许自动授�
 | **`changes_requested`** | 当前 Manifest 永久保留但不可执行；Task 保持 `planning`，修改执行计划后创建新 Run。 |
 | **`rejected`** | 当前 Run 不可执行，Task 进入 `blocked`。 |
 
-Run Authorization 不允许新增 `approved_with_conditions`。授权人提出的新条件必须先进入新的 RunManifest，再重新计算摘要和审批，不能把未锁定条件附在 Manifest 外。
+Run Authorization 不接受 `approved_with_conditions` 或非空 `conditions`。准备未完成时不批准；需要改变锁定输入或执行要求时使用 `changes_requested`，修改执行计划并封存新 Manifest 后重新审批，不能附条件放行。
 
 ### `planning -> executing`
 
-最后一个所需授权决定形成后，Control Plane 必须重新校验 Task、Run、Manifest 和 Approval 版本，PRD、ContextManifest、TRD 和前置审批有效性，目标仓库基线，所有 `execution` 前条件，资源、工具、策略、隔离和凭据绑定，以及同一 Task 没有其他活动 Run。
+最后一个所需授权决定形成后，Control Plane 必须重新校验 Task、Run、Manifest 和 Approval 版本，PRD、ContextManifest、TRD 和前置审批有效性，目标仓库基线，审批与 Manifest 不携带附加条件，资源、工具、策略、隔离和凭据绑定，以及同一 Task 没有其他活动 Run。
 
 全部通过后，Control Plane 在同一事务中将 Run 更新为已授权、将 Task 更新为 `executing`，增加两者版本，并分别追加 RunTransition 和引用 Run ID、Manifest 摘要及 Run Authorization Approval 的 TaskTransition。事务提交前不得创建 Pi Session、RoleRun 或执行工具；提交后才能创建第一个 Executor RoleRun。
 
@@ -556,27 +558,21 @@ Control Plane 必须在同一事务中校验 Task、PRD、ContextManifest 和 TR
 
 一个 TRD Approval 可以根据审批策略要求多个 Human Authority 分别决策。每个人的决定以不可修改的 ApprovalDecision 追加保存；在所需决定全部满足前，Task 保持 `awaiting_trd_approval`。单个人的批准不能代替 Approval 的聚合结果。
 
-决策命令为 `record_trd_approval_decision`。该命令始终追加一项审批决定，但只有聚合结果达到终态时才产生 Task 状态转换；仍需等待其他审批人时，Task 状态保持不变。
+决策命令为 `record_trd_approval_decision`。有效命令追加一项审批决定，但只有聚合结果达到终态时才产生 Task 状态转换；仍需等待其他审批人时，Task 状态保持不变。拒绝的请求不追加决定或推进状态。
 
 最终结果与 Task 状态对应如下：
 
 | 结果 | Task 处理 |
 | --- | --- |
 | **`approved`** | 所有要求的审批角色均已满足，进入 `planning`。 |
-| **`approved_with_conditions`** | `planning` 前条件满足后进入 `planning`；只包含后续门禁条件时可以进入 `planning`。 |
 | **`changes_requested`** | 技术设计问题返回 `drafting_trd`，EMI Context 或适用性问题返回 `contextualizing`，PRD、目标或范围问题返回 `intake`。 |
 | **`rejected`** | 进入 `blocked`，由授权人员决定重新开始或取消，不直接关闭 Task。 |
 
 原 TRD、ContextManifest 和 PRD 版本保持不可修改。修改时必须创建新版本，旧审批请求和意见继续作为历史证据保留。
 
-附条件批准的每个条件必须记录 Condition ID、描述、责任人、`planning`、`execution` 或 `acceptance` 生效门禁、验证方式和证据引用：
+v0.1 拒绝 `approved_with_conditions` 和任何非空 `conditions`，即使调用方声称条件已有完成证据也不例外。准备未完成时保持待审批；需要修改 TRD、监管解释或验收标准时使用 `changes_requested`，完成后再提交正式批准。`ApprovalCondition` 类型和历史状态仅用于读取与追溯，不表示支持条件追踪或自动判断条件满足。
 
-- `planning` 前条件未满足时，Task 继续停留在 `awaiting_trd_approval`。
-- `execution` 或 `acceptance` 前条件可以允许 Task 进入 `planning`，但必须进入 RunManifest 并由对应状态门禁检查。
-- 会改变 TRD、监管解释或核心验收标准的事项不能作为附加条件，必须使用 `changes_requested` 并重新审批。
-- Agent 不能自行宣布条件已经满足。
-
-每条 ApprovalDecision 至少记录 Decision ID、Approval ID 与版本、决定、Authority ID 与角色、理由、结构化条件、证据引用和决定时间。审批策略确定所需角色、聚合规则、审批人与作者或提交人的独立性，以及审批有效期。
+每条 ApprovalDecision 至少记录 Decision ID、Approval ID 与版本、决定、Authority ID 与角色、理由、条件字段（新决定为空）、证据引用和决定时间。审批策略确定所需角色、聚合规则、审批人与作者或提交人的独立性，以及审批有效期。
 
 Control Plane 记录决定时必须校验审批人身份与角色、Approval 版本，以及绑定的 TRD、PRD 和 ContextManifest 是否仍然有效，然后追加 ApprovalDecision 并重新计算 Approval 结果。只有形成最终结果时，才在同一事务中更新 Task、增加 Task 版本并追加 TaskTransition；仍需等待其他决定时不改变 Task 状态。
 
@@ -595,7 +591,7 @@ Executor 必须先形成带 ID、版本和 SHA-256 的 ExecutionResult 制品，
 转换前必须满足：
 
 - Task 为 `executing`，Run 为 `active`，Executor RoleRun 为 `settling`；命令携带正确的 Task、Run 和 RoleRun 版本、唯一 Command ID 以及当前 `leaseToken`。
-- RunManifest、Run Authorization、PRD、ContextManifest、TRD 和所有 `execution` 前条件仍然有效。
+- RunManifest、Run Authorization、PRD、ContextManifest 和 TRD 仍然有效；审批及 Manifest 不携带附加条件。
 - Pi 已结束且 `runtimeOutcome` 为 `completed`，Executor RoleRun 尚未结算。
 - ExecutionResult 已持久化并封存，绑定的输入、基线和输出摘要与实际制品一致。
 - 变更没有超出 RunManifest 允许的目标仓库和路径，原始基线没有发生未获准变化。
@@ -795,7 +791,7 @@ Run:  active -> settled / completed
 - 命令精确绑定当前 ExecutionResult、verdict 为 `pass` 的 VerificationResult、验收标准和 RunManifest 摘要。
 - 被接受的 Commit 或 Patch 与验证时摘要一致，没有在 PASS 后发生变化。
 - VerificationResult、必需检查、原始证据和引用仍然有效且可以解析。
-- 所有 `acceptance` 前 ApprovalCondition 已满足并具有有效证据。
+- 所有批准仍有效且无附加条件，Manifest 的 `approvalConditions` 为空。
 - 不存在未结算 RoleRun、未知 Tool Operation、阻塞事项或未处理 finding。
 - Run Authorization、职责分离、权限和其他适用门禁仍然有效。
 - RunManifest 规定在完成前执行的交付操作已经由 Tool Gateway 完成并对账，正式权威证据记录已经齐全。
@@ -835,7 +831,7 @@ Control Plane 必须在同一事务中重新校验上述事实，将 Task 更新
 
 ### Approval 生命周期
 
-Approval 当前状态为 `pending`、`approved`、`approved_with_conditions`、`changes_requested`、`rejected`、`withdrawn`、`expired` 或 `revoked`。ApprovalDecision 永远只追加；ApprovalTransition 记录聚合状态如何形成。任何状态变化都与受影响的 Task 或 Run 后果在同一事务中提交。
+Approval 当前状态为 `pending`、`approved`、`changes_requested`、`rejected`、`withdrawn`、`expired` 或 `revoked`；`approved_with_conditions` 仅为历史兼容状态，不能作为有效批准。ApprovalDecision 永远只追加；ApprovalTransition 记录聚合状态如何形成。任何状态变化都与受影响的 Task 或 Run 后果在同一事务中提交。
 
 - `withdraw_approval` 只适用于 `pending`，由请求者或有权限人员执行；已存在的个人决定保留，聚合请求变为 `withdrawn`。
 - `expire_approval` 由确定性时钟和审批策略中的截止时间触发，只适用于 `pending`；通知延迟不能延长有效期。

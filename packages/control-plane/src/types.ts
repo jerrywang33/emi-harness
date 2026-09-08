@@ -84,6 +84,7 @@ export type ApprovalStatus =
   | "expired"
   | "revoked";
 
+/** approved_with_conditions is retained for historical records; new commands reject it. */
 export type ApprovalDecisionValue = "approved" | "approved_with_conditions" | "changes_requested" | "rejected";
 
 export interface ApprovalCondition {
@@ -206,6 +207,7 @@ export interface RunManifestV1 {
   roles: readonly RolePlan[];
   policies: {
     policyRefs: readonly VersionedRef[];
+    /** Must be empty for v0.1; retained to read historical manifests without rewriting them. */
     approvalConditions: readonly ApprovalCondition[];
     maxRoleRuns: number;
     maxDurationMs: number;

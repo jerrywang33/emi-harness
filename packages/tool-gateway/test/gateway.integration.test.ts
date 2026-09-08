@@ -149,6 +149,23 @@ describe("SqliteToolGateway", () => {
     fixture.gateway.close();
   });
 
+  it("denies new writes when an active Run has unsupported approval conditions", async () => {
+    const root = await workspace();
+    const fixture = await gatewayFixture({ databasePath: join(root, "gateway.sqlite"), workspaceRoot: root });
+    try {
+      fixture.state.approvalSupported = false;
+      const denied = await fixture.gateway.invoke(request());
+      expect(denied.operation.status).toBe("denied");
+      expect(denied.decision.reasonCodes).toEqual(["authorization_denied"]);
+      expect(() => fixture.gateway.getIntent(denied.operation.operationId)).toThrowError(
+        expect.objectContaining({ code: "not_found" }),
+      );
+      await expect(readFile(join(root, "src/value.ts"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      fixture.gateway.close();
+    }
+  });
+
   it("uses compare-and-set and rejects reuse of a tool call with different input", async () => {
     const root = await workspace();
     await writeFile(join(root, "src/value.ts"), "original\n", "utf8");

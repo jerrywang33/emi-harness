@@ -142,7 +142,7 @@ Control Plane 使用以下相互关联的记录保存权威事实，而不是从
 | **TaskTransition** | 追加记录每次状态变化的原状态、目标状态、操作者、原因以及审批和证据引用。 | 与 Task 状态在同一事务中写入，形成不可省略的状态变化历史。 |
 | **Approval** | 保存绑定确定版本对象的待审批请求，并聚合所需决定。 | 被审批对象变化后，原请求不能继续使用。 |
 | **ApprovalTransition** | 追加保存审批请求的创建、聚合结论、撤回、过期和撤销。 | 生命周期不可改写，批准失效不能删除已经发生的决定或执行事实。 |
-| **ApprovalDecision** | 追加保存 Human Authority 作出的每项决定、理由、条件和证据。 | 决定不可原地修改，并且必须绑定 Approval 版本。 |
+| **ApprovalDecision** | 追加保存 Human Authority 作出的每项决定、理由和证据；历史条件字段保留。 | 决定不可原地修改，并且必须绑定 Approval 版本；v0.1 不支持附条件批准。 |
 | **Run** | 保存一次受控交付尝试的当前状态、版本、最终结果及其 Manifest 关联。 | Control Plane 判断该次尝试是否仍可执行和恢复的依据。 |
 | **RunTransition** | 追加记录 Run 每次被接受的状态变化。 | 与 Run 当前状态在同一事务中写入，不保存未被接受的状态请求。 |
 | **RunManifest** | 锁定一次受控运行使用的任务版本、角色、Runtime、资源、工具、策略、目标仓库基线和审批引用。 | 封存后不可修改；任何已锁定内容变化都必须生成新的 Run 和 Manifest。 |
@@ -183,7 +183,7 @@ flowchart TD
 | **`intake`** | 用户 / Coordinator | 用户目标、PRD 引用、版本与哈希、初步范围、期望结果和初始风险等级。 |
 | **`contextualizing`** | Coordinator，按需调用领域能力 | 已封存的 ContextManifest，以及适用司法辖区、业务场景、权威来源、规则版本、确认依据和非阻塞待确认事项。 |
 | **`drafting_trd`** | Coordinator | 已封存并可追溯到 PRD 和 EMI Context 的 TRD，包含系统行为、技术方案、控制要求、风险和验收标准。 |
-| **`awaiting_trd_approval`** | Human Authority | 对确定版本和哈希的 TRD 作出的一个或多个决定、附加条件及最终聚合结果。 |
+| **`awaiting_trd_approval`** | Human Authority | 对确定版本和哈希的 TRD 作出的一个或多个决定及最终聚合结果；准备完成后才明确批准。 |
 | **`planning`** | Coordinator / Control Plane | 可独立验证的执行计划、已封存的 RunManifest，以及绑定其摘要的有效 Run Authorization。 |
 | **`executing`** | Executor | 代码、配置、测试变更及 RunManifest 要求的自检证据。 |
 | **`verifying`** | Verifier 与受控验证工具 | 可复现的验证结果、原始证据及独立 PASS 或 FAIL 结论。 |
@@ -248,7 +248,7 @@ Run 是针对一个已批准 TRD 版本，在固定输入、权限和目标代�
 
 每个 RoleRun 表示一个角色的一次实际执行或重试，使用独立 Pi Session，并记录实际消费和产生的制品。Executor 与 Verifier 不得共享 RoleRun 或 Pi Session，也不得同时执行。v0.1 中一个 Task 同时最多只有一个活动 Run；RoleRun 结束后重新启动 Agent 必须创建新的 RoleRun，Pi Session 内部的模型重试仍属于原 RoleRun。
 
-PRD、ContextManifest、TRD、目标仓库基线、Runtime、模型、角色、资源、工具、策略、权限、隔离方式或审批条件等已锁定内容发生变化时，必须终止当前 Run 并在重新满足前置门禁后生成新 Run。Agent 不得在现有 Run 内自行改变这些边界；代码、测试、验证结果、工具证据和获准范围内的返工属于 Run 输出，不修改 RunManifest。
+PRD、ContextManifest、TRD、目标仓库基线、Runtime、模型、角色、资源、工具、策略、权限或隔离方式等已锁定内容发生变化时，必须终止当前 Run 并在重新满足前置门禁后生成新 Run。Agent 不得在现有 Run 内自行改变这些边界；代码、测试、验证结果、工具证据和获准范围内的返工属于 Run 输出，不修改 RunManifest。
 
 Run 依次处于等待授权、已授权、活动、停止中、阻塞或已结算状态；RoleRun 依次处于已准备、启动中、运行中、结算中、阻塞或已结算状态。Pi 正常结束不代表 RoleRun 成功，只有输出已封存且外部操作全部对账后才能结算；未知副作用不是终态，必须保持阻塞并停止自动重试。
 
@@ -280,7 +280,7 @@ Manifest 不保存 Pi Session、运行状态、Agent 推理、代码输出、工
 
 Manifest 使用确定性 JSON 序列化和 SHA-256 生成摘要，摘要保存在 Run 记录中；摘要用于发现内容变化，不等同于数字签名或存储安全证明。RunManifest 可以包含 TRD 等前置审批引用，但授权执行该 Manifest 的 Run Authorization Approval 必须保存在 Manifest 外并绑定其摘要，避免 Manifest 与自身审批形成循环依赖。
 
-Control Plane 通过 `seal_run_manifest` 重新读取所有权威引用，按照 RFC 8785 规范化 JSON，以 UTF-8 编码计算 SHA-256，并在同一事务中保存 Run、不可变 Manifest 和 `run_authorization` 待审批请求。Task 此时仍处于 `planning`。v0.1 的每个 Run 都需要 Human Authority 明确授权；Run Authorization 只能批准、要求修改或拒绝，新增条件必须写入新 Manifest 后重新计算摘要和审批。
+Control Plane 通过 `seal_run_manifest` 重新读取所有权威引用，按照 RFC 8785 规范化 JSON，以 UTF-8 编码计算 SHA-256，并在同一事务中保存 Run、不可变 Manifest 和 `run_authorization` 待审批请求。Task 此时仍处于 `planning`。v0.1 的 TRD Approval 与 Run Authorization 只能批准、要求修改或拒绝，均不接受附条件批准；准备完成后才明确批准。Manifest 的 `approvalConditions` 必须为空；需要改变锁定要求时，修改对应输入并重新封存、审批。
 
 Manifest 封存并获得所需批准后，Control Plane 才能创建 RoleRun。每次角色执行或重试都有独立的 Role Run ID，并记录角色、尝试次数、Pi Session ID、开始和结束时间以及运行结果。运行中需要改变任何已锁定内容时，必须停止当前运行并生成新的 Run ID 和 Manifest，不允许 Agent 自行扩权、替换资源或修改运行基线。
 
@@ -384,4 +384,4 @@ v0.1 中，EMI Harness 和用于校准的目标 EMI 应用统一使用 TypeScrip
 
 本 README 描述 EMI Harness 的目标定位和架构，不表示其中全部能力已经实现。旧版文件式 Harness 已删除；v0.1 已实现受控 Pi Runtime Adapter、SQLite Control Plane、最小 Controlled EMI Resources、Tool Gateway、独立 Executor/Verifier、确定性检查和不可变 Evidence。一个无远端本地 TypeScript 目标项目已通过真实 Pi AgentSession 和确定性 Faux Provider 完成失败恢复、独立验证和候选 Evidence Package 导出，历史工程验收与干净环境复核见发布记录。
 
-当前先补齐文档和关键注释，交由另一个 AI 独立 review，再讨论修复和真实、低风险 EMI 任务校准。独立 review、真实模型效果和用户业务验收均未因本次文档补充而完成。阶段目标、实施进度和完成条件以 [`roadmap/README.md`](roadmap/README.md) 为准。
+独立 review 后，当前逐项讨论并修复已确认的问题；第一项将 v0.1 收窄为只接受无附加条件的正式批准，历史附条件记录保留用于追溯，不继续授权运行或交付。真实模型效果和用户业务验收仍需后续真实、低风险 EMI 任务校准。阶段目标、实施进度和完成条件以 [`roadmap/README.md`](roadmap/README.md) 为准。

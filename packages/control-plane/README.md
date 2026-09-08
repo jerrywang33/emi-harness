@@ -21,6 +21,10 @@ v0.1 只支持一个 Control Plane 写进程。Agent、Git、网络和有副作�
 
 ## 恢复与验收边界
 
+v0.1 只接受无附加条件的正式批准：TRD Approval 与 Run Authorization 拒绝 `approved_with_conditions` 和非空 `conditions`，新 Manifest 的 `approvalConditions` 必须为空。准备未完成时不批准，需要修改审批对象时使用 `changes_requested`。历史条件记录保留可读，但不再作为继续封存、执行或交付的有效批准，也不会自动转换成正式批准。
+
+`assertRunAuthorization(runId)` 只读检查当前 Run 的前置批准和执行批准，供 Gateway 与候选证据包复用；它不授予工具权限，调用方仍需检查 Run 状态、角色、租约和工具范围。
+
 `planRecovery()` 只查询并返回恢复动作，执行动作和投递 outbox 由宿主负责。重放已完成命令会返回当时保存的结果，需要最新版本时应重新查询；租约 token 用于拒绝旧 Worker 写入，已派发的工具操作仍需独立对账。
 
 `acceptDelivery()` 要求调用方提供具备 `delivery_authority` 的 Human Actor，并检查绑定结果与状态；它记录最终接受及导出请求，不执行合并、部署或最终包导出。审批身份的真实性与跨账本证据校验需要沿完整调用链审查。

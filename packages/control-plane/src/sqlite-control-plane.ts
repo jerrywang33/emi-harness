@@ -560,6 +560,12 @@ export class SqliteControlPlane {
     return this.requireRun(runId);
   }
 
+  /** Checks approval eligibility without changing historical records or granting a tool lease. */
+  assertRunAuthorization(runId: string): void {
+    const run = this.requireRun(runId);
+    this.assertRunApprovalsEffective(run, this.getRunManifest(runId).manifest);
+  }
+
   getRunManifest(runId: string): { manifest: RunManifestV1; canonicalJson: string; digest: string } {
     const row = this.database.prepare("SELECT * FROM run_manifests WHERE run_id = ?").get(runId) as SqlRow | undefined;
     if (row === undefined) {
@@ -679,6 +685,7 @@ export class SqliteControlPlane {
       if (run.taskId !== task.taskId || roleRun.runId !== run.runId) {
         fail("invalid_input", "Task, Run, and RoleRun do not belong to the same execution");
       }
+      this.assertRunApprovalsEffective(run, this.getRunManifest(run.runId).manifest);
       const now = this.clock.now();
       if (
         roleRun.status !== "prepared" &&
@@ -719,6 +726,7 @@ export class SqliteControlPlane {
     return this.command("mark_role_run_running", command, () => {
       const roleRun = this.requireRoleRun(command.roleRunId);
       this.assertRoleLease(roleRun, command.expectedRoleRunVersion, command.leaseToken, "starting", command.actor);
+      this.assertRunAuthorization(roleRun.runId);
       requireText("sessionId", command.sessionId);
       return this.writeRoleRunTransition(roleRun, {
         status: "running",
@@ -1741,9 +1749,6 @@ export class SqliteControlPlane {
     if (command.actor.actorId === approval.requestedBy) {
       fail("permission_denied", "Approval requester cannot approve the same object");
     }
-    if (approval.gate === "run_authorization" && command.decision === "approved_with_conditions") {
-      fail("invalid_input", "Run Authorization cannot be approved with conditions");
-    }
     this.validateDecisionConditions(command.decision, command.conditions);
     try {
       this.database
@@ -1786,7 +1791,7 @@ export class SqliteControlPlane {
       if (task.status !== "awaiting_trd_approval") {
         fail("invalid_transition", `Task is not awaiting TRD approval: ${task.taskId}`);
       }
-      if (aggregate === "approved" || aggregate === "approved_with_conditions") {
+      if (aggregate === "approved") {
         const updatedTask = this.writeTaskTransition(task, {
           status: "planning",
           actor: command.actor,
@@ -1879,25 +1884,11 @@ export class SqliteControlPlane {
   }
 
   private validateDecisionConditions(decision: ApprovalDecisionValue, conditions: readonly ApprovalCondition[]): void {
-    if (decision === "approved_with_conditions" && conditions.length === 0) {
-      fail("invalid_input", "approved_with_conditions requires at least one structured condition");
+    if (decision === "approved_with_conditions") {
+      fail("invalid_input", "v0.1 does not support conditional approval; complete prerequisites before approving");
     }
-    if (decision !== "approved_with_conditions" && conditions.length > 0) {
-      fail("invalid_input", `Decision ${decision} cannot carry approval conditions`);
-    }
-    const ids = new Set<string>();
-    for (const condition of conditions) {
-      requireText("conditionId", condition.conditionId);
-      requireText("condition description", condition.description);
-      requireText("condition owner", condition.owner);
-      requireText("condition verificationMethod", condition.verificationMethod);
-      if (ids.has(condition.conditionId)) {
-        fail("invalid_input", `Duplicate approval condition: ${condition.conditionId}`);
-      }
-      ids.add(condition.conditionId);
-      if (condition.requiredBefore === "planning" && condition.evidenceRefs.length === 0) {
-        fail("invalid_input", `Planning condition lacks completion evidence: ${condition.conditionId}`);
-      }
+    if (!Array.isArray(conditions) || conditions.length !== 0) {
+      fail("invalid_input", "v0.1 approval decisions must have empty conditions");
     }
   }
 
@@ -1908,23 +1899,30 @@ export class SqliteControlPlane {
     if (decisions.some((row) => row.decision === "changes_requested")) {
       return "changes_requested";
     }
+    if (decisions.some((row) => {
+      const conditions = parseJson<unknown>(row.conditions_json);
+      return row.decision === "approved_with_conditions" || !Array.isArray(conditions) || conditions.length !== 0;
+    })) {
+      fail("approval_invalid", "Historical conditional decisions cannot authorize further work; request a new approval");
+    }
     const satisfied = new Set(
       decisions
-        .filter((row) => row.decision === "approved" || row.decision === "approved_with_conditions")
+        .filter((row) => row.decision === "approved")
         .map((row) => row.authority_role),
     );
     if (!requiredRoles.every((role) => satisfied.has(role))) {
       return "pending";
     }
-    return decisions.some((row) => row.decision === "approved_with_conditions")
-      ? "approved_with_conditions"
-      : "approved";
+    return "approved";
   }
 
   private validateManifest(task: Task, runId: string, manifest: RunManifestV1): void {
     requireText("runId", runId);
     if (manifest.schemaVersion !== "1" || manifest.runId !== runId) {
       fail("invalid_input", "RunManifest schemaVersion or runId is invalid");
+    }
+    if (!Array.isArray(manifest.policies.approvalConditions) || manifest.policies.approvalConditions.length !== 0) {
+      fail("invalid_input", "v0.1 RunManifest must have empty approvalConditions");
     }
     if (manifest.task.taskId !== task.taskId || manifest.task.taskRevision !== task.version) {
       fail("version_conflict", "RunManifest does not bind the current Task revision");
@@ -1955,7 +1953,7 @@ export class SqliteControlPlane {
       if (!this.sameRef(this.approvalRef(approval), ref)) {
         fail("digest_mismatch", `Approval snapshot does not match RunManifest: ${ref.id}`);
       }
-      if (!["approved", "approved_with_conditions"].includes(approval.status)) {
+      if (approval.status !== "approved") {
         fail("approval_invalid", `Prerequisite Approval is not effective: ${ref.id}`);
       }
       if (approval.gate === "trd_approval" && this.sameRef(approval.subject, task.trd)) {
@@ -2004,9 +2002,12 @@ export class SqliteControlPlane {
   }
 
   private assertRunPrerequisitesEffective(run: Run, manifest: RunManifestV1): void {
+    if (!Array.isArray(manifest.policies.approvalConditions) || manifest.policies.approvalConditions.length !== 0) {
+      fail("approval_invalid", "Historical RunManifest with approval conditions cannot authorize further work");
+    }
     for (const ref of manifest.inputs.prerequisiteApprovals) {
       const approval = this.requireApproval(ref.id);
-      if (!this.sameRef(this.approvalRef(approval), ref) || !["approved", "approved_with_conditions"].includes(approval.status)) {
+      if (!this.sameRef(this.approvalRef(approval), ref) || approval.status !== "approved") {
         fail("approval_invalid", `Run prerequisite Approval is no longer effective: ${ref.id}`);
       }
     }
