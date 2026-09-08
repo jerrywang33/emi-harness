@@ -55,6 +55,10 @@ export class ControlPlaneRoleRunAuthority implements RoleRunAuthorityPort {
   ) {}
 
   async authorize(request: ToolInvocationRequest): Promise<RoleRunAuthoritySnapshot> {
+    return this.authorizeForDispatch(request);
+  }
+
+  authorizeForDispatch(request: ToolInvocationRequest): RoleRunAuthoritySnapshot {
     const run = this.reader.getRun(request.runId);
     const roleRun = this.reader.getRoleRun(request.roleRunId);
     if (run.runId !== request.runId || run.status !== "active") {

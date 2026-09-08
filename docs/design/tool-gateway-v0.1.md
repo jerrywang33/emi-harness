@@ -2,7 +2,7 @@
 
 - 状态：已实现 v0.1
 - 对应 Roadmap：v0.1 第 5 步
-- 最后更新：2026-08-21
+- 最后更新：2026-09-08
 
 ## 目标
 
@@ -29,6 +29,16 @@ workspace worker process    只执行一种文件操作，受仓库根目录和�
 - Tool Gateway 通过 `RoleRunAuthorityPort` 重新读取 Control Plane 当前事实。授权时必须同时满足：Run 为 `active`、RoleRun 为 `running`、Run/RoleRun 关系一致、lease 未过期、fencing token 精确匹配、角色为 Executor，以及工具、版本、定义摘要、策略引用和隔离配置都与 RolePlan 一致。
 - Gateway 的策略和状态保存在自身 SQLite 账本。Pi Session、模型输出或 Tool Result 文本不能替代 Operation 当前状态。
 - 真正文件副作用由独立 Node helper process 执行。v0.1 的进程边界和严格文件 API 能减少 Agent 能力，但不等同于容器、虚拟机或操作系统级网络隔离；正式部署前必须通过新 ADR 选择更强隔离实现。
+
+### 撤销与派发的顺序
+
+2026-09-08 修复授权检查与派发之间的异步间隙。`authorize()` 返回的快照只用于初始策略决定；新请求与历史 `authorized` 请求在派发前都必须调用 `RoleRunAuthorityPort.authorizeForDispatch()`，同步读取当前批准、Run、RoleRun、租约和工具授权，并重新核对策略输出与不可变 Intent 一致。最终检查缺失、抛错或返回 Promise/thenable 时关闭执行。
+
+Gateway 先持久化 `executing` 与 `dispatch_prepared`，再执行最终同步检查并立即调用 `Executor.execute()`，中间不经过 `await`。执行批准、租约或取消信号在准备阶段失效时，保留原 Decision 与 Intent，记录已知未派发的 `failed`，不调用 Executor。`executing` 是持久化的派发准备，单独看到它不能证明 Worker 已启动；准备后崩溃仍按未知结果恢复。
+
+此顺序依赖 v0.1 的部署约定：Control Plane 的全部状态写入、Gateway 与最终权限 Reader 必须在同一个 Node.js 事件循环内，Reader 同步读取权威事实；可信策略和 Reader 不得在最终检查中回入修改控制面状态。多进程、Worker Thread 或远程控制面需要另外设计能够排序撤销与派发的协议，不能用缓存快照代替最终检查。当前子进程 Executor 在 `execute()` 调用内同步启动 Worker；调用该方法是本地派发的边界。
+
+撤销先于最终派发时必须拦住新操作。已经调用 `execute()` 后发生的撤销不等于“文件未写入”：停止后续派发，已有操作继续保存真实结果，结果不明时按 Operation ID 对账，不盲目重试。
 
 ## 固定工具契约
 
@@ -65,9 +75,9 @@ denied
 ```
 
 - `denied` 没有执行意图，不调用 Worker。
-- `authorized` 表示策略允许且 Intent 已经提交；Gateway 将状态改为 `executing` 并提交事务后才可启动 Worker。
+- `authorized` 表示初始策略允许且 Intent 已经提交；Gateway 将状态改为 `executing` 并记录 `dispatch_prepared` 后，还必须通过最终同步授权、策略与 Intent 一致性及取消检查，才能立即调用 Executor 启动 Worker。
 - Worker 明确报告应用成功或前置条件失败时分别进入 `succeeded` 或 `failed`。
-- 超时、进程退出、协议损坏、取消或 Gateway 无法确定 Worker 是否已经写入时进入 `unknown`，不得按原请求自动执行第二次。
+- 派发前取消结算为已知未派发的 `failed`；派发后因超时、进程退出、协议损坏、取消或其他原因无法确定 Worker 是否已经写入时进入 `unknown`，不得按原请求自动执行第二次。
 
 ## 中断与对账
 

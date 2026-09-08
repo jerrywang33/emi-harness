@@ -74,16 +74,21 @@ EMI Harness 用 Pi 执行 Agent 工作，自有代码管理任务状态、授权
 | 存储 | 权威内容 | 当前实现边界 |
 | --- | --- | --- |
 | Control Plane SQLite | 任务与运行状态、审批、不可变制品、状态变更、命令结果、outbox | 单个命令在本库事务内提交；v0.1 部署约定为单写进程 |
-| Tool Gateway SQLite | Operation 状态、Decision、Intent、Result、Transition | 工具意图先落账，再执行副作用；与目标文件操作不共用事务 |
+| Tool Gateway SQLite | Operation 状态、Decision、Intent、Result、Transition | 工具意图与 `executing` 派发准备先落账，最终同步检查通过后才调用 Executor；与目标文件操作不共用事务 |
 | Evidence SQLite | Runtime 摘要、工具操作快照、执行结果、检查观察、验证门禁记录 | 写入不可变记录，读取核对摘要；调用方负责生产者身份及访问权限 |
 | Pi Session 与临时收集器 | Agent 上下文、事件、结构化提交 | 当前 Session 在内存中；事件在运行结束后转换为 Evidence，未逐事件持久化 |
 | 目标项目工作区与候选 JSON | 实际代码、检查脚本、导出的候选交付材料 | 工作区是可变文件系统；候选包使用内容摘要，未提供签名、可信时间戳或防篡改存储 |
 
 三个 SQLite 数据库没有跨库事务。Integration 分步写入各库，再完成角色交接；review 需要沿着每个写入点检查中断后的可恢复性。Control Plane 的 `planRecovery()` 返回恢复建议，不会自行执行 outbox、重启 Agent 或启动恢复守护进程。
 
+Gateway 的初始异步 `authorize()` 只产生策略快照。新请求与历史 `authorized` 请求都必须先持久化 `executing` / `dispatch_prepared`，再调用必需的同步 `authorizeForDispatch()`，重检权威状态、策略与不可变 Intent 一致性及取消信号，随后不经 `await` 立即调用 `Executor.execute()`。最终检查缺失、抛错或返回 Promise/thenable 均关闭执行；未派发的拒绝保留原 Decision 和 Intent，并结算为已知 `failed`。单独的 `executing` 记录不能证明 Worker 已启动，准备后崩溃仍需对账。
+
+当前子进程 Executor 在 `execute()` 调用内同步启动 Worker，以该调用作为本地派发边界。撤销先于最终派发会阻止新操作；已经派发的操作继续保存真实结果，结果不明时保持 `unknown` 并对账，不能因批准已撤销就宣称文件未写入。
+
 ### 宿主承担的责任
 
 - 校准中 Pi SDK、Integration、Control Plane、Registry、Gateway 和 Evidence Store 同处主进程；文件操作与检查分别在 Node 子进程中运行。职责分离和进程分离应分别审查。
+- 撤销与派发的顺序依赖 Control Plane 的全部状态写入、Gateway 和最终权限 Reader 位于同一个 Node.js 事件循环，Reader 同步读取权威事实；可信 Reader 和策略不得在最终检查中回入修改控制面状态。多进程、Worker Thread 或远程控制面需要另行设计排序协议，不能以缓存授权快照提供同等保障。
 - `Actor.actorType`、`roles` 和 Worker 身份由调用方传入。控制面检查其字段和权限条件，仓库尚无登录认证、外部 IAM 或防伪造的身份凭证验证层。
 - `RuntimeTool.execute` 是宿主提供的进程内回调。白名单限制 Agent 可选择的工具，回调实现、注册策略、Executor 和 CheckRunner 本身需要可信。增加任意自定义工具可能绕过既有 Gateway 路径。
 - `repositoryId` 到本地根目录、Runtime 的 `cwd`、数据库路径、检查脚本和凭据解析器由宿主组装。需要确认这些配置一致，且 Agent 无法改写控制数据、策略和检查程序。
@@ -100,7 +105,8 @@ EMI Harness 用 Pi 执行 Agent 工作，自有代码管理任务状态、授权
 | --- | --- | --- |
 | 命令重放不能产生第二次状态变化 | [Control Plane](../packages/control-plane/src/sqlite-control-plane.ts) 的 `command()` | [生命周期测试](../packages/control-plane/test/lifecycle.integration.test.ts)、[约束测试](../packages/control-plane/test/constraints.integration.test.ts)：相同 Command ID 的请求摘要、结果重放和版本冲突 |
 | v0.1 不接受附条件批准 | Control Plane 的审批、Manifest 和有效授权检查；Gateway Authority | [控制面测试目录](../packages/control-plane/test)、[工具测试目录](../packages/tool-gateway/test)：拒绝 `approved_with_conditions`、非空决定条件和 Manifest 条件；历史条件记录不能继续放行，普通批准仍可完成闭环 |
-| 旧 Worker 不能继续写状态或发起新操作 | Control Plane 的租约检查、[Gateway Authority](../packages/tool-gateway/src/control-plane-authority.ts) | [控制面恢复测试](../packages/control-plane/test/recovery.integration.test.ts)、[Gateway 测试](../packages/tool-gateway/test/gateway.integration.test.ts)：过期 token 和取消；另检查撤回审批与执行中操作的交互是否有覆盖 |
+| 旧 Worker 不能继续写状态或发起新操作 | Control Plane 的租约检查、[Gateway Authority](../packages/tool-gateway/src/control-plane-authority.ts) | [控制面恢复测试](../packages/control-plane/test/recovery.integration.test.ts)、[Gateway 测试](../packages/tool-gateway/test/gateway.integration.test.ts)：过期 token、取消和旧 Worker 请求 |
+| 撤销先于派发时阻止操作 | Gateway 的 `dispatch()`、Authority 的同步 `authorizeForDispatch()` | [真实控制面撤销测试](../packages/integration/test/approval-dispatch.integration.test.ts) 与 [工具测试目录](../packages/tool-gateway/test/)：初始异步授权后撤销、历史 `authorized` 请求恢复、准备后取消、最终检查缺失/抛错/thenable、策略与 Intent 不一致；已派发操作仍按真实结果或 `unknown` 结算 |
 | Pi 不自动加载环境资源或默认工具 | [受控 Session 工厂](../packages/runtime-pi/src/controlled-pi-session-factory.ts)、[ResourceLoader](../packages/runtime-pi/src/controlled-resource-loader.ts) | [Runtime 测试目录](../packages/runtime-pi/test)：空白名单、实际工具集、环境资源、上游契约和公共类型边界 |
 | 资源引用与内容一致 | [Registry](../packages/resource-registry/src/file-resource-registry.ts) 的 `load()` | [资源安全测试](../packages/resource-registry/test/security.integration.test.ts)：索引、Manifest 原文摘要、内容摘要、角色和路径 |
 | 未知副作用不能当普通失败重试 | [Gateway](../packages/tool-gateway/src/sqlite-tool-gateway.ts) 的 `dispatch()/reconcileOperation()`、Coordinator 的 `settleToolEvidence()` | [工具恢复测试](../packages/tool-gateway/test/recovery.integration.test.ts)、[角色集成测试](../packages/integration/test/role-execution.integration.test.ts)：已应用、未应用、分歧和 Runtime 失败叠加未知结果 |

@@ -134,6 +134,8 @@ export interface RoleRunAuthoritySnapshot {
 
 export interface RoleRunAuthorityPort {
   authorize(request: ToolInvocationRequest): Promise<RoleRunAuthoritySnapshot>;
+  /** Reads current local authority synchronously; must not return a cached snapshot or a Promise. */
+  authorizeForDispatch(request: ToolInvocationRequest): RoleRunAuthoritySnapshot;
 }
 
 export interface ToolPolicyEvaluation {

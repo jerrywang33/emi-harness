@@ -7,6 +7,7 @@
 ### Fixed
 
 - v0.1 收窄为只接受无附加条件的正式批准，拒绝附条件决定和非空 Manifest 审批条件；历史记录保留追溯，但不得继续授权执行或交付。同步文档并补充拒绝路径回归检查。
+- Gateway 新增必需的同步 `authorizeForDispatch()`，新请求与历史 `authorized` 请求均在持久化 `executing` / `dispatch_prepared` 后重检权威授权、策略与 Intent 一致性及取消信号，再立即调用 Executor，阻止初始异步授权后已撤销的操作派发。此顺序依赖控制面全部状态写入与 Gateway 位于同一 Node.js 事件循环；已经派发的操作继续保存真实结果或按 `unknown` 对账。
 
 ### Documentation
 

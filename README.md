@@ -384,4 +384,4 @@ v0.1 中，EMI Harness 和用于校准的目标 EMI 应用统一使用 TypeScrip
 
 本 README 描述 EMI Harness 的目标定位和架构，不表示其中全部能力已经实现。旧版文件式 Harness 已删除；v0.1 已实现受控 Pi Runtime Adapter、SQLite Control Plane、最小 Controlled EMI Resources、Tool Gateway、独立 Executor/Verifier、确定性检查和不可变 Evidence。一个无远端本地 TypeScript 目标项目已通过真实 Pi AgentSession 和确定性 Faux Provider 完成失败恢复、独立验证和候选 Evidence Package 导出，历史工程验收与干净环境复核见发布记录。
 
-独立 review 后，当前逐项讨论并修复已确认的问题；第一项将 v0.1 收窄为只接受无附加条件的正式批准，历史附条件记录保留用于追溯，不继续授权运行或交付。真实模型效果和用户业务验收仍需后续真实、低风险 EMI 任务校准。阶段目标、实施进度和完成条件以 [`roadmap/README.md`](roadmap/README.md) 为准。
+独立 review 后，当前逐项讨论并修复已确认的问题：v0.1 只接受无附加条件的正式批准，历史附条件记录保留用于追溯，不继续授权运行或交付；Gateway 在同一 Node.js 事件循环内完成派发前的最终同步授权检查，拦住此前已撤销的操作，已派发操作仍按真实结果结算和对账。真实模型效果和用户业务验收仍需后续真实、低风险 EMI 任务校准。阶段目标、实施进度和完成条件以 [`roadmap/README.md`](roadmap/README.md) 为准。

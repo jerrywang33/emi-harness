@@ -371,7 +371,7 @@ export class SqliteToolGateway {
             "execution",
           );
         }
-        return this.dispatch(existing, signal);
+        return this.dispatch(existing, request, signal);
       }
       return this.reconcileOperation(existing);
     }
@@ -416,7 +416,7 @@ export class SqliteToolGateway {
     if (operation.status === "denied") {
       return this.outcome(operation);
     }
-    return this.dispatch(operation, signal);
+    return this.dispatch(operation, request, signal);
   }
 
   private createOperation(input: {
@@ -532,18 +532,37 @@ export class SqliteToolGateway {
     return this.getOperation(operationId);
   }
 
-  private async dispatch(operation: ToolOperation, signal?: AbortSignal): Promise<ToolInvocationOutcome> {
+  private async dispatch(
+    operation: ToolOperation,
+    request: ToolInvocationRequest,
+    signal?: AbortSignal,
+  ): Promise<ToolInvocationOutcome> {
     if (operation.status !== "authorized") {
       fail("invalid_transition", `Operation cannot execute from ${operation.status}: ${operation.operationId}`);
     }
-    if (signal?.aborted === true) {
+    if (signal?.aborted) {
       return this.finishKnownFailure(operation, "cancelled_before_execution", "Tool call was cancelled before dispatch", "execution");
     }
     const intent = this.getIntent(operation.operationId);
     this.assertIntentMatchesOperation(operation, intent);
-    // Commit dispatch state before crossing the process boundary. A missing reply cannot
-    // prove that no write happened, so recovery must inspect the persisted intent.
-    const executing = this.transition(operation, "executing", "intent_dispatched");
+    // Persist preparation first: SQLite I/O can outlast a lease. This state alone does not
+    // prove dispatch; a crash here still requires conservative reconciliation.
+    const executing = this.transition(operation, "executing", "dispatch_prepared");
+    try {
+      this.assertDispatchAuthorized(request, executing, intent);
+    } catch (error) {
+      return this.finishKnownFailure(
+        executing,
+        "authorization_expired_before_execution",
+        error instanceof ToolGatewayError ? error.message : "Final Control Plane authority check was unavailable",
+        "execution",
+      );
+    }
+    if (signal?.aborted) {
+      return this.finishKnownFailure(executing, "cancelled_before_execution", "Tool call was cancelled before dispatch", "execution");
+    }
+    // Do not await or persist anything between the final local check and execute().
+    // All Control Plane writes share this event loop; execute() is the dispatch boundary.
     try {
       const result = await this.executor.execute(intent, signal);
       return this.finishExecution(executing, result, "execution");
@@ -556,6 +575,53 @@ export class SqliteToolGateway {
         "Isolated executor did not return a trustworthy result",
       );
       return this.outcome(unknown);
+    }
+  }
+
+  private assertDispatchAuthorized(
+    request: ToolInvocationRequest,
+    operation: ToolOperation,
+    intent: OperationIntent,
+  ): void {
+    const authority = this.authority.authorizeForDispatch(request);
+    if (authority === null || typeof authority !== "object") {
+      fail("authorization_denied", "Final authority check did not return a snapshot");
+    }
+    if ("then" in authority && typeof authority.then === "function") {
+      // A misconfigured async adapter must neither dispatch nor leave an unhandled rejection.
+      void Promise.resolve(authority).catch(() => undefined);
+      fail("authorization_denied", "Final authority check must be synchronous");
+    }
+    const registration = this.registrations.get(registrationKey(operation.tool.name, operation.tool.version));
+    if (
+      registration === undefined ||
+      registration.definition.definitionDigest !== operation.tool.definitionDigest ||
+      !sameRef(registration.policy.ref, operation.tool.policyRef) ||
+      authority.runId !== operation.runId ||
+      authority.roleRunId !== operation.roleRunId ||
+      authority.role !== "executor" ||
+      authority.leaseToken !== operation.leaseToken ||
+      authority.repositoryId !== intent.repositoryId ||
+      authority.baseCommit !== intent.baseCommit ||
+      !sameRef(authority.isolationProfile, intent.isolationProfile) ||
+      authority.tool.name !== operation.tool.name ||
+      authority.tool.version !== operation.tool.version ||
+      authority.tool.definitionDigest !== operation.tool.definitionDigest ||
+      !sameRef(authority.tool.policyRef, operation.tool.policyRef)
+    ) {
+      fail("authorization_denied", "Current authority does not match the persisted Operation Intent");
+    }
+    const evaluation = registration.policy.evaluate(authority, request.input);
+    if (
+      evaluation.outcome !== "allow" ||
+      evaluation.allowedPath !== intent.allowedPath ||
+      evaluation.normalizedInput === undefined ||
+      digestJson(evaluation.normalizedInput) !== intent.inputDigest
+    ) {
+      fail("authorization_denied", "Current policy does not allow the persisted Operation Intent");
+    }
+    if (typeof authority.leaseExpiresAt !== "string" || authority.leaseExpiresAt <= this.clock.now()) {
+      fail("authorization_denied", "RoleRun lease expired before dispatch");
     }
   }
 

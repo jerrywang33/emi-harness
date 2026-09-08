@@ -3,7 +3,9 @@ import type {
   ControlPlaneAuthorityReader,
   IdGenerator,
   IsolatedToolExecutorPort,
+  RoleRunAuthorityPort,
   ToolInvocationRequest,
+  ToolPolicyPort,
 } from "../src/index.js";
 import {
   ControlPlaneRoleRunAuthority,
@@ -112,6 +114,8 @@ export async function gatewayFixture(input: {
   clock?: TestClock;
   ids?: TestIds;
   executor?: IsolatedToolExecutorPort;
+  authority?: RoleRunAuthorityPort;
+  policy?: ToolPolicyPort;
 }): Promise<{ gateway: SqliteToolGateway; executor: IsolatedToolExecutorPort; state: MutableAuthorityState; clock: TestClock }> {
   const state = input.state ?? authorizedState();
   const clock = input.clock ?? new TestClock();
@@ -122,9 +126,9 @@ export async function gatewayFixture(input: {
   return {
     gateway: new SqliteToolGateway({
       databasePath: input.databasePath,
-      authority: new ControlPlaneRoleRunAuthority(authorityFixture(state), clock),
+      authority: input.authority ?? new ControlPlaneRoleRunAuthority(authorityFixture(state), clock),
       executor,
-      registrations: [{ definition: WORKSPACE_WRITE_TOOL, policy: new WorkspaceWritePolicy() }],
+      registrations: [{ definition: WORKSPACE_WRITE_TOOL, policy: input.policy ?? new WorkspaceWritePolicy() }],
       clock,
       idGenerator: input.ids ?? new TestIds(),
     }),
