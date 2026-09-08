@@ -1039,6 +1039,7 @@ export class SqliteControlPlane {
     });
   }
 
+  /** Records acceptance and an export request; no merge, deployment or export runs here. */
   acceptDelivery(command: AcceptDeliveryCommand): { task: Task; run: Run } {
     return this.command("accept_delivery", command, () => {
       const task = this.requireTask(command.taskId);
@@ -1110,6 +1111,7 @@ export class SqliteControlPlane {
     });
   }
 
+  /** Read-only recovery plan for the host to execute; this does not resume Pi sessions. */
   planRecovery(): RecoveryAction[] {
     const actions: RecoveryAction[] = [];
     const outboxRows = this.database.prepare("SELECT event_id FROM outbox WHERE status = 'pending' ORDER BY event_id").all() as SqlRow[];
@@ -1169,6 +1171,8 @@ export class SqliteControlPlane {
     };
   }
 
+  // State changes, transitions, outbox entries and the replay result share this DB transaction.
+  // Replays return the original result; callers needing current versions must query again.
   private command<T>(
     commandType: string,
     request: { commandId: string; actor: Actor },
@@ -1320,6 +1324,8 @@ export class SqliteControlPlane {
     }
   }
 
+  // Both the record version and lease token must match: they fence different stale writes.
+  // Rejecting a stale worker cannot undo an external operation already dispatched.
   private assertRoleLease(
     roleRun: RoleRun,
     expectedVersion: number,

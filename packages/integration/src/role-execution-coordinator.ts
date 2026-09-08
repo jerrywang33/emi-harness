@@ -150,6 +150,7 @@ function eventEvidence(event: RuntimeEvent): JsonValue {
   return common;
 }
 
+/** Runs one Executor or Verifier attempt; the trusted host owns approvals and retry scheduling. */
 export class RoleExecutionCoordinator {
   private readonly controlPlane: SqliteControlPlane;
   private readonly runtime: PiRuntimePort;
@@ -179,6 +180,7 @@ export class RoleExecutionCoordinator {
     const rolePlan = this.requireRolePlan(manifestRecord.manifest, request.rolePlanId, "executor");
     const collector = new ExecutionSubmissionCollector();
     const gatewayTools = new GatewayRuntimeToolCollector(this.gateway);
+    // Persist identity and lease before creating a Pi session so startup has a recovery anchor.
     const prepared = this.controlPlane.prepareRoleRun({
       commandId: `${request.roleRunId}:prepare`,
       actor: this.coordinator,
@@ -230,6 +232,7 @@ export class RoleExecutionCoordinator {
     const runtimeEvidenceRef = formatEvidenceRef(runtimeEvidence);
     const toolEvidence = await this.settleToolEvidence(request, started, operationIds);
     const evidenceRefs = [runtimeEvidenceRef, ...toolEvidence.evidenceRefs];
+    // Unknown side effects take precedence over runtime failure: a normal retry could repeat a write.
     if (toolEvidence.unknown) {
       return this.blockRole(
         request,
@@ -272,6 +275,7 @@ export class RoleExecutionCoordinator {
       summary: submission.summary,
       changedPaths: [...submission.changedPaths].sort(),
       selfChecks: [...submission.selfChecks],
+      // Binds tool-operation snapshots, not a complete filesystem or Git-tree snapshot.
       workspaceOutputDigest: digestJson(toolEvidence.snapshots),
       toolOperations: toolEvidence.snapshots.map((snapshot) => ({
         operationId: snapshot.operationId,
@@ -578,6 +582,8 @@ export class RoleExecutionCoordinator {
     if (role === "coordinator") {
       fail("invalid_configuration", "Coordinator RolePlans are not executable through this integration path");
     }
+    // This is the current automatic artifact projection. Verifier gets the bound handoff
+    // and criteria, without automatic TRD, source-tree or diff loading.
     const refs = role === "executor"
       ? [
           { ref: manifest.inputs.trd, kind: "trd" },
@@ -601,11 +607,13 @@ export class RoleExecutionCoordinator {
   }
 
   private async runRuntime(session: RuntimeSession, prompt: string, timeoutMs: number): Promise<RuntimeObservation> {
+    // Events are buffered until run() returns; this is not a durable per-event journal.
     const events: RuntimeEvent[] = [];
     const unsubscribe = session.subscribe((event) => {
       events.push(event);
     });
     let timedOut = false;
+    // Abort is cooperative: the host needs a stronger process boundary for a hard deadline.
     const timer = setTimeout(() => {
       timedOut = true;
       void session.abort().catch(() => undefined);

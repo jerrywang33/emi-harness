@@ -39,6 +39,7 @@ export interface RuntimeToolResult {
   details?: JsonValue;
 }
 
+/** Trusted host callback. Side effects must be routed through the governed tool boundary. */
 export interface RuntimeTool {
   name: string;
   description: string;
@@ -60,6 +61,7 @@ export type RuntimeMessageRole = "assistant" | "custom" | "tool" | "unknown" | "
 
 export type RuntimeAgentOutcome = "aborted" | "completed" | "error" | "incomplete" | "unknown";
 
+/** Runtime termination only; role settlement and delivery acceptance belong to the host. */
 export interface RuntimeRunResult {
   outcome: RuntimeAgentOutcome;
   errorMessage?: string;
@@ -129,6 +131,7 @@ export interface RuntimeSession {
   dispose(): void;
 }
 
+/** Pi-neutral session boundary; the caller owns authorization and resource validation. */
 export interface PiRuntimePort {
   startSession(request: StartRuntimeSessionRequest): Promise<RuntimeSession>;
 }

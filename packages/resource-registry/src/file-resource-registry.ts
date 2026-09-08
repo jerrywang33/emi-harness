@@ -65,6 +65,8 @@ export class FileResourceRegistry {
   }
 
   async load(ref: VersionedRef, role: ResourceRole): Promise<LoadedResource> {
+    // The run pins the index entry, which pins raw manifest bytes; the manifest pins content.
+    // Do not canonicalize the manifest before hashing: whitespace is part of this resource ref.
     const entry = this.findEntry(ref.id, ref.version);
     if (entry.digest !== ref.digest) {
       fail("digest_mismatch", `Run reference does not match Registry index: ${ref.id}@${ref.version}`);

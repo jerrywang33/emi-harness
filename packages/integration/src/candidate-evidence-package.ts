@@ -64,6 +64,7 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+/** Reads the three ledgers to build a pending-acceptance export; it does not accept the task. */
 export class CandidateEvidencePackageBuilder {
   constructor(private readonly config: CandidateEvidencePackageBuilderConfig) {}
 
@@ -257,6 +258,7 @@ export function parseCandidateEvidencePackage(serialized: string): CandidateEvid
   return envelope;
 }
 
+/** Checks envelope integrity and pending acceptance, not signatures or all builder invariants. */
 export function verifyCandidateEvidencePackage(envelope: CandidateEvidencePackageEnvelope): void {
   if (
     envelope.schemaVersion !== "1" ||

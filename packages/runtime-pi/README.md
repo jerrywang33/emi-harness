@@ -24,7 +24,16 @@ Upgrading any Pi package requires updating all three versions together and rerun
 - `run()` returns that EMI-owned terminal result directly. Runtime transport failures remain exceptions, so the Control Plane does not have to infer success from Pi messages.
 - Runtime event listeners are delivered in order and may be asynchronous. Listener failures cannot interrupt Pi, but `run()` rejects after Pi settles so evidence delivery failures are not hidden.
 
-## Current limits
+## Code entrypoints
+
+- [contracts.ts](src/contracts.ts) defines `PiRuntimePort`, explicit session inputs, neutral events and runtime outcomes. A completed runtime call does not settle an EMI RoleRun or accept a delivery.
+- [pi-runtime-adapter.ts](src/pi-runtime-adapter.ts) builds the model runtime with a caller-provided API-key resolver. Disabling catalog refresh does not disable real model inference or its network traffic.
+- [controlled-pi-session-factory.ts](src/controlled-pi-session-factory.ts) is shared by production and deterministic testing adapters. It injects in-memory settings/sessions, controlled resources and explicit custom tools, then checks the actual active tools.
+- [pi-runtime-session.ts](src/pi-runtime-session.ts), [pi-event-mapper.ts](src/pi-event-mapper.ts) and [runtime-event-dispatcher.ts](src/runtime-event-dispatcher.ts) handle session lifecycle, event conversion and ordered observer delivery.
+
+Custom tool callbacks execute in the host process. Their implementations must be trusted; selecting an exact tool list does not sandbox those callbacks. Integration routes the current workspace-write callback through the Tool Gateway. The port itself does not authenticate callers, validate resource governance or enforce RunManifest leases. Runtime events carry correlation IDs, not fencing tokens; Integration supplies tokens separately for state commands and gateway calls.
+
+## Current limits and host responsibilities
 
 Persistent EMI task state, the Tool Gateway, isolated execution, governed resources, Evidence and production credential management remain outside this package and must not be added to the Agent loop.
 
@@ -37,3 +46,5 @@ pnpm --filter @emi-harness/runtime-pi check
 ```
 
 The contract suite uses Pi's public faux provider, so it executes a complete prompt, tool call, tool result, final response, and active-request abort without network access or a real model credential. It also builds the package and checks that the public declaration graph exposes no Pi types.
+
+Run the root workspace check first after a fresh install. See the [review guide](../../docs/review-guide.md) for the complete call chain, test layers and limits of the local calibration.

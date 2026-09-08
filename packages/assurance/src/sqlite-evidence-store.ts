@@ -142,6 +142,7 @@ export class SqliteEvidenceStore {
       }
       return existing;
     }
+    // Timestamp only the first insertion; replay equality is based on caller input above.
     const createdAt = this.clock.now();
     const envelope = { ...normalized, createdAt };
     const canonicalJson = canonicalizeJson(envelope);

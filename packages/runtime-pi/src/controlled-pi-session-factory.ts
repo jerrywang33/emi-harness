@@ -84,6 +84,8 @@ export async function createControlledPiRuntimeSession(input: {
   await input.modelRuntime.checkAuth(input.request.model.provider);
 
   const toolNames = input.request.tools.map((tool) => tool.name);
+  // Disable ambient defaults as well as built-ins, then inject only host-supplied resources
+  // and callbacks. These callbacks still run in-process; this factory is not a sandbox.
   const { session } = await createAgentSession({
     cwd: input.request.cwd,
     agentDir: input.agentDir,
@@ -98,6 +100,7 @@ export async function createControlledPiRuntimeSession(input: {
     ...(input.request.model.thinkingLevel === undefined ? {} : { thinkingLevel: input.request.model.thinkingLevel }),
   });
 
+  // Verify Pi's effective configuration, not just the options sent to the SDK.
   const activeToolNames = session.getActiveToolNames();
   if (
     toolNames.length !== activeToolNames.length ||

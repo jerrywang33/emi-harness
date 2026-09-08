@@ -2,6 +2,8 @@
 
 当前工程版本：[v0.1.0](docs/releases/v0.1.0.md)。该版本是供真实场景校准的工程基线，不表示生产就绪或 EMI 业务验收通过。
 
+开发与 review 入口：[Review 指南](docs/review-guide.md)，包含实际调用链、各包代码入口、状态与权限边界、验证命令和待核实事项。目标架构与当前实现范围请分别阅读。
+
 ---
 
 ## EMI Harness 是什么
@@ -70,6 +72,8 @@ Controlled EMI Resources 是法规、内部政策、业务规则和工程规范�
 每个 EMI Context 都通过 ContextManifest 列出实际引用的资源 ID、版本和哈希。EMI Context 说明本次设计必须满足什么约束，TRD 再把这些约束转化为系统行为、技术方案、工程控制和验证方式；Agent 不得把未确认的适用性判断或监管解释直接写成 TRD 的既定事实。
 
 ## EMI Harness 如何工作
+
+本节描述完整目标流程。v0.1 已跑通已授权 Run 的执行、独立检查和候选证据导出；前置需求、Context、TRD 和审批由调用方提供，完整 Coordinator Agent、外部审批接入及验收后正式包导出仍待建设。当前进程与存储边界见 [实际调用链](docs/review-guide.md#3-实际调用链)。
 
 每项研发任务都从用户目标和 PRD 开始，而不是直接让 Agent 编写代码。Coordinator 先确定业务场景、司法辖区和任务所需的 EMI Context，再形成包含系统行为、技术方案、控制要求和验收标准的 TRD。用户确认后，EMI Control Plane 生成本次 RunManifest，锁定 Pi 版本、角色、资源、工具、策略和目标仓库状态。Pi Runtime Adapter 只使用 RunManifest 允许的上下文和工具执行当前角色的工作。
 
@@ -307,6 +311,8 @@ emi-harness/
 
 上图是逐步建设的目标结构。只有开始实现一项真实能力时才创建相应目录；每个包必须有明确的职责、入口、输出、依赖方向和契约测试，不用空包或占位文件制造已经完成的假象。
 
+当前 6 个包均已有实现；测试位于各包的 `test/`，跨包组合与 Pi 端到端测试位于 `packages/integration/test/`，尚未建立根级 `tests/`。实际包关系和代码入口见 [Review 指南](docs/review-guide.md#2-推荐阅读顺序)。
+
 ### 状态、证据与仓库边界
 
 | 位置 | 保存内容 | 不应保存的内容 |
@@ -376,4 +382,6 @@ v0.1 中，EMI Harness 和用于校准的目标 EMI 应用统一使用 TypeScrip
 
 ## 当前阶段
 
-本 README 描述 EMI Harness 的目标定位和架构，不表示其中全部能力已经实现。旧版文件式 Harness 已删除；v0.1 已实现受控 Pi Runtime Adapter、SQLite Control Plane、最小 Controlled EMI Resources、Tool Gateway、独立 Executor/Verifier、确定性检查和不可变 Evidence。一个无远端本地 TypeScript 目标项目已通过真实 Pi AgentSession 完成失败恢复、独立验证和候选 Evidence Package 导出，工程验收与干净环境复核已经通过。下一阶段从真实、低风险 EMI 任务开始校准；真实业务和用户验收仍须逐任务完成。阶段目标、实施进度和完成条件以 [`roadmap/README.md`](roadmap/README.md) 为准。
+本 README 描述 EMI Harness 的目标定位和架构，不表示其中全部能力已经实现。旧版文件式 Harness 已删除；v0.1 已实现受控 Pi Runtime Adapter、SQLite Control Plane、最小 Controlled EMI Resources、Tool Gateway、独立 Executor/Verifier、确定性检查和不可变 Evidence。一个无远端本地 TypeScript 目标项目已通过真实 Pi AgentSession 和确定性 Faux Provider 完成失败恢复、独立验证和候选 Evidence Package 导出，历史工程验收与干净环境复核见发布记录。
+
+当前先补齐文档和关键注释，交由另一个 AI 独立 review，再讨论修复和真实、低风险 EMI 任务校准。独立 review、真实模型效果和用户业务验收均未因本次文档补充而完成。阶段目标、实施进度和完成条件以 [`roadmap/README.md`](roadmap/README.md) 为准。

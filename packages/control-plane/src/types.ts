@@ -15,6 +15,7 @@ export interface IdGenerator {
 
 export type ActorType = "agent" | "human" | "system" | "worker";
 
+/** Identity asserted by the trusted host; this value carries no authentication proof. */
 export interface Actor {
   actorId: string;
   actorType: ActorType;

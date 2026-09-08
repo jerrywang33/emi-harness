@@ -69,6 +69,8 @@ export class AssuranceService {
     return recorded;
   }
 
+  // The agent proposes a verdict; stored check observations constrain what can be sealed.
+  // Callers must still supply trusted runners, storage and identity bindings.
   sealVerification(input: VerificationAssuranceInput): VerificationAssuranceResult {
     if (!isSha256(input.manifestDigest)) fail("invalid_input", "Verification requires a Manifest SHA-256");
     if (

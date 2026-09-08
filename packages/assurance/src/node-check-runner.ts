@@ -104,6 +104,8 @@ export class NodeCheckRunner implements CheckRunnerPort {
     if (!/^[0-9a-f]{40,64}$/u.test(request.target.baseCommit)) {
       fail("invalid_check", "Check target baseCommit must be a fixed Git object ID");
     }
+    // This digest binds the check definition, not script bytes or the current Git tree.
+    // The trusted host must protect the workspace and check implementation between steps.
     validateDefinition(request.check.ref, request.check.definition, this.maxTimeoutMs);
     const requestedScript = resolve(this.workspaceRoot, request.check.definition.scriptPath);
     let scriptPath: string;
@@ -150,6 +152,8 @@ export class NodeCheckRunner implements CheckRunnerPort {
 
   private runProcess(scriptPath: string, args: readonly string[], timeoutMs: number): Promise<ProcessObservation> {
     return new Promise((resolvePromise) => {
+      // A minimal environment avoids credential inheritance; OS filesystem and network
+      // permissions still belong to the host account, so this is not an untrusted-code sandbox.
       const child = spawn(process.execPath, [scriptPath, ...args], {
         cwd: this.workspaceRoot,
         env: { NODE_NO_WARNINGS: "1", TZ: "UTC" },

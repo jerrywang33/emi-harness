@@ -541,6 +541,8 @@ export class SqliteToolGateway {
     }
     const intent = this.getIntent(operation.operationId);
     this.assertIntentMatchesOperation(operation, intent);
+    // Commit dispatch state before crossing the process boundary. A missing reply cannot
+    // prove that no write happened, so recovery must inspect the persisted intent.
     const executing = this.transition(operation, "executing", "intent_dispatched");
     try {
       const result = await this.executor.execute(intent, signal);
@@ -568,6 +570,8 @@ export class SqliteToolGateway {
     return this.reconcileOperation(current);
   }
 
+  // Reconciliation observes an accepted operation even after its lease expires.
+  // It must never call execute() or grant permission for a new write.
   private async reconcileOperation(operation: ToolOperation): Promise<ToolInvocationOutcome> {
     if (operation.status !== "executing" && operation.status !== "unknown") {
       fail("invalid_transition", `Operation cannot be reconciled from ${operation.status}: ${operation.operationId}`);
