@@ -78,7 +78,6 @@ interface RuntimeObservation {
 }
 
 interface SettledToolEvidence {
-  operationIds: readonly string[];
   evidenceRefs: readonly string[];
   actualChangedPaths: readonly string[];
   unknown: boolean;
@@ -174,36 +173,16 @@ export class RoleExecutionCoordinator {
   }
 
   async execute(request: ExecuteRoleRequest): Promise<ExecuteRoleOutcome> {
-    const task = this.controlPlane.getTask(request.taskId);
-    const run = this.controlPlane.getRun(request.runId);
     const manifestRecord = this.controlPlane.getRunManifest(request.runId);
     const rolePlan = this.requireRolePlan(manifestRecord.manifest, request.rolePlanId, "executor");
     const collector = new ExecutionSubmissionCollector();
     const gatewayTools = new GatewayRuntimeToolCollector(this.gateway);
     // Persist identity and lease before creating a Pi session so startup has a recovery anchor.
-    const prepared = this.controlPlane.prepareRoleRun({
-      commandId: `${request.roleRunId}:prepare`,
-      actor: this.coordinator,
-      taskId: request.taskId,
-      expectedTaskVersion: task.version,
-      runId: request.runId,
-      expectedRunVersion: run.version,
-      roleRunId: request.roleRunId,
-      rolePlanId: request.rolePlanId,
-      inputArtifacts: [manifestRecord.manifest.inputs.trd, manifestRecord.manifest.inputs.executionPlan],
-    });
-    const leased = this.controlPlane.acquireRoleRunLease({
-      commandId: `${request.roleRunId}:lease`,
-      actor: request.worker,
-      taskId: request.taskId,
-      expectedTaskVersion: task.version,
-      runId: request.runId,
-      expectedRunVersion: run.version,
-      roleRunId: request.roleRunId,
-      expectedRoleRunVersion: prepared.version,
-      leaseOwner: request.worker.actorId,
-      leaseDurationMs: this.leaseDuration(request.leaseDurationMs, rolePlan.limits.timeoutMs),
-    });
+    const leased = this.prepareAndLease(
+      request,
+      [manifestRecord.manifest.inputs.trd, manifestRecord.manifest.inputs.executionPlan],
+      rolePlan.limits.timeoutMs,
+    );
     const tools = this.executorTools(rolePlan, collector, gatewayTools, {
       runId: request.runId,
       roleRunId: request.roleRunId,
@@ -239,19 +218,17 @@ export class RoleExecutionCoordinator {
         started.session.sessionId,
         settling,
         evidenceRefs,
-        "unknown_tool_operation",
-        request.worker,
-      );
+        "unknown_tool_operation");
     }
     if (runtime.result.outcome !== "completed") {
-      return this.failRole(request, started.session.sessionId, settling, evidenceRefs, runtime.result.outcome, request.worker);
+      return this.failRole(request, started.session.sessionId, settling, evidenceRefs, runtime.result.outcome);
     }
 
     let submission;
     try {
       submission = collector.requireSingle();
     } catch {
-      return this.failRole(request, started.session.sessionId, settling, evidenceRefs, "invalid_execution_submission", request.worker);
+      return this.failRole(request, started.session.sessionId, settling, evidenceRefs, "invalid_execution_submission");
     }
     if (!exactStrings(submission.changedPaths, toolEvidence.actualChangedPaths)) {
       return this.failRole(
@@ -259,9 +236,7 @@ export class RoleExecutionCoordinator {
         started.session.sessionId,
         settling,
         evidenceRefs,
-        "changed_path_binding_mismatch",
-        request.worker,
-      );
+        "changed_path_binding_mismatch");
     }
 
     const executionContent = {
@@ -332,8 +307,6 @@ export class RoleExecutionCoordinator {
   }
 
   async verify(request: VerifyRoleRequest): Promise<VerifyRoleOutcome> {
-    const task = this.controlPlane.getTask(request.taskId);
-    const run = this.controlPlane.getRun(request.runId);
     const manifestRecord = this.controlPlane.getRunManifest(request.runId);
     const rolePlan = this.requireRolePlan(manifestRecord.manifest, request.rolePlanId, "verifier");
     const executorRoleRun = this.controlPlane.getRoleRun(request.executorRoleRunId);
@@ -348,33 +321,19 @@ export class RoleExecutionCoordinator {
       fail("invalid_configuration", "Verifier request is not bound to the successful Executor RoleRun");
     }
     const collector = new VerificationSubmissionCollector();
-    const prepared = this.controlPlane.prepareRoleRun({
-      commandId: `${request.roleRunId}:prepare`,
-      actor: this.coordinator,
-      taskId: request.taskId,
-      expectedTaskVersion: task.version,
-      runId: request.runId,
-      expectedRunVersion: run.version,
-      roleRunId: request.roleRunId,
-      rolePlanId: request.rolePlanId,
-      inputArtifacts: [request.executionResult, manifestRecord.manifest.verification.acceptanceCriteria],
-    });
-    const totalCheckTimeout = manifestRecord.manifest.verification.requiredChecks.reduce((total, ref) => {
-      const definition = this.controlPlane.getArtifact(ref).content as unknown as CheckDefinitionV1;
-      return total + (typeof definition.timeoutMs === "number" ? definition.timeoutMs : 0);
-    }, 0);
-    const leased = this.controlPlane.acquireRoleRunLease({
-      commandId: `${request.roleRunId}:lease`,
-      actor: request.worker,
-      taskId: request.taskId,
-      expectedTaskVersion: task.version,
-      runId: request.runId,
-      expectedRunVersion: run.version,
-      roleRunId: request.roleRunId,
-      expectedRoleRunVersion: prepared.version,
-      leaseOwner: request.worker.actorId,
-      leaseDurationMs: this.leaseDuration(request.leaseDurationMs, rolePlan.limits.timeoutMs + totalCheckTimeout),
-    });
+    const checkDefinitions = manifestRecord.manifest.verification.requiredChecks.map((ref) => ({
+      ref,
+      definition: this.controlPlane.getArtifact(ref).content as unknown as CheckDefinitionV1,
+    }));
+    const totalCheckTimeout = checkDefinitions.reduce(
+      (total, { definition }) => total + (typeof definition.timeoutMs === "number" ? definition.timeoutMs : 0),
+      0,
+    );
+    const leased = this.prepareAndLease(
+      request,
+      [request.executionResult, manifestRecord.manifest.verification.acceptanceCriteria],
+      rolePlan.limits.timeoutMs + totalCheckTimeout,
+    );
     const tools = this.verifierTools(rolePlan, collector);
     const started = await this.startRuntime(
       request,
@@ -395,10 +354,7 @@ export class RoleExecutionCoordinator {
           baseCommit: started.manifest.target.baseCommit,
         },
         requiredChecks: started.manifest.verification.requiredChecks,
-        checks: started.manifest.verification.requiredChecks.map((ref) => ({
-          ref,
-          definition: this.controlPlane.getArtifact(ref).content as unknown as CheckDefinitionV1,
-        })),
+        checks: checkDefinitions,
       });
     } catch {
       started.session.dispose();
@@ -411,7 +367,7 @@ export class RoleExecutionCoordinator {
         runtimeOutcome: "incomplete",
         toolOperationRefs: [],
       });
-      return this.failRole(request, started.session.sessionId, settling, [], "assurance_check_failed", request.worker);
+      return this.failRole(request, started.session.sessionId, settling, [], "assurance_check_failed");
     }
     const checkPrompt = `${request.prompt}\n\nDeterministic check observations (authoritative):\n${JSON.stringify(
       checks.map((check) => ({
@@ -435,13 +391,13 @@ export class RoleExecutionCoordinator {
     const runtimeEvidence = this.saveRuntimeEvidence(request, started, runtime);
     const evidenceRefs = [formatEvidenceRef(runtimeEvidence), ...checks.map((check) => check.evidenceRef)];
     if (runtime.result.outcome !== "completed") {
-      return this.failRole(request, started.session.sessionId, settling, evidenceRefs, runtime.result.outcome, request.worker);
+      return this.failRole(request, started.session.sessionId, settling, evidenceRefs, runtime.result.outcome);
     }
     let submission: VerificationSubmission;
     try {
       submission = collector.requireSingle();
     } catch {
-      return this.failRole(request, started.session.sessionId, settling, evidenceRefs, "invalid_verification_submission", request.worker);
+      return this.failRole(request, started.session.sessionId, settling, evidenceRefs, "invalid_verification_submission");
     }
     let assured;
     try {
@@ -462,7 +418,7 @@ export class RoleExecutionCoordinator {
         submission,
       });
     } catch {
-      return this.failRole(request, started.session.sessionId, settling, evidenceRefs, "assurance_rejected", request.worker);
+      return this.failRole(request, started.session.sessionId, settling, evidenceRefs, "assurance_rejected");
     }
     const allEvidenceRefs = [...evidenceRefs, assured.evidenceRef];
     const verificationInput = {
@@ -694,7 +650,6 @@ export class RoleExecutionCoordinator {
       evidenceRefs.push(formatEvidenceRef(evidence));
     }
     return {
-      operationIds: [...operationIds],
       evidenceRefs,
       actualChangedPaths: [...changedPaths].sort(),
       unknown,
@@ -763,6 +718,38 @@ export class RoleExecutionCoordinator {
     }
   }
 
+  private prepareAndLease(
+    request: ExecuteRoleRequest | VerifyRoleRequest,
+    inputArtifacts: readonly VersionedRef[],
+    expectedWorkMs: number,
+  ): { roleRun: RoleRun } {
+    const task = this.controlPlane.getTask(request.taskId);
+    const run = this.controlPlane.getRun(request.runId);
+    const prepared = this.controlPlane.prepareRoleRun({
+      commandId: `${request.roleRunId}:prepare`,
+      actor: this.coordinator,
+      taskId: request.taskId,
+      expectedTaskVersion: task.version,
+      runId: request.runId,
+      expectedRunVersion: run.version,
+      roleRunId: request.roleRunId,
+      rolePlanId: request.rolePlanId,
+      inputArtifacts,
+    });
+    return this.controlPlane.acquireRoleRunLease({
+      commandId: `${request.roleRunId}:lease`,
+      actor: request.worker,
+      taskId: request.taskId,
+      expectedTaskVersion: task.version,
+      runId: request.runId,
+      expectedRunVersion: run.version,
+      roleRunId: request.roleRunId,
+      expectedRoleRunVersion: prepared.version,
+      leaseOwner: request.worker.actorId,
+      leaseDurationMs: this.leaseDuration(request.leaseDurationMs, expectedWorkMs),
+    });
+  }
+
   private leaseDuration(requested: number | undefined, expectedWorkMs: number): number {
     const duration = requested ?? Math.min(86_400_000, Math.max(60_000, expectedWorkMs + 30_000));
     if (!Number.isSafeInteger(duration) || duration <= 0 || duration > 86_400_000) {
@@ -777,11 +764,10 @@ export class RoleExecutionCoordinator {
     roleRun: RoleRun,
     evidenceRefs: readonly string[],
     errorCode: string,
-    worker: Actor,
   ): UnsuccessfulRole {
     const outcome = this.controlPlane.settleRoleRun({
       commandId: `${request.roleRunId}:failed:${errorCode}`,
-      actor: worker,
+      actor: request.worker,
       roleRunId: request.roleRunId,
       expectedRoleRunVersion: roleRun.version,
       leaseToken: roleRun.leaseToken,
@@ -807,13 +793,12 @@ export class RoleExecutionCoordinator {
     roleRun: RoleRun,
     evidenceRefs: readonly string[],
     errorCode: string,
-    worker: Actor,
   ): UnsuccessfulRole {
     const task = this.controlPlane.getTask(request.taskId);
     const run = this.controlPlane.getRun(request.runId);
     const blocked = this.controlPlane.blockRoleRun({
       commandId: `${request.roleRunId}:blocked:${errorCode}`,
-      actor: worker,
+      actor: request.worker,
       taskId: request.taskId,
       expectedTaskVersion: task.version,
       runId: request.runId,
