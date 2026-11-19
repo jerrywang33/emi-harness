@@ -16,6 +16,7 @@ v0.1 只支持一个 Control Plane 写进程。Agent、Git、网络和有副作�
 
 - [contracts.ts](src/contracts.ts) 定义写命令，[types.ts](src/types.ts) 定义 Task、Run、RoleRun、Approval、Manifest 和版本引用。Actor 身份与角色由可信调用方提供，本包不接入登录认证或 IAM。
 - [sqlite-control-plane.ts](src/sqlite-control-plane.ts) 提供命令与查询。`command()` 将状态修改、Transition、outbox 和幂等结果放在同一 SQLite 事务中；同 ID 同请求重放原结果，不同请求报冲突。
+- [rows.ts](src/rows.ts) 提供 SQLite 行到领域对象的映射和输入校验辅助函数。
 - [migrations.ts](src/migrations.ts) 定义表、索引、状态约束及不可变记录触发器；[canonical-json.ts](src/canonical-json.ts) 定义制品规范化和摘要。改动这些行为需评估历史数据与引用兼容性。
 - Integration 用本包推进角色与任务，Gateway Authority 读取本包做权限检查，候选包 builder 读取审批、制品和状态历史。工具与 Evidence 使用独立账本，不参与本库事务。
 

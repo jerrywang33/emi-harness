@@ -7,7 +7,6 @@ import type {
   RoleRunOutcome,
   RunManifestV1,
   RuntimeOutcome,
-  TaskStatus,
   VerificationFindingClass,
   VerificationVerdict,
   VersionedRef,

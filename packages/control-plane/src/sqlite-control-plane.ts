@@ -28,6 +28,28 @@ import type {
 } from "./contracts.js";
 import { ControlPlaneError, fail } from "./errors.js";
 import { applyMigrations } from "./migrations.js";
+import {
+  approvalDecisionFromRow,
+  approvalFromRow,
+  approvalRef,
+  artifactFromRow,
+  asNumber,
+  asText,
+  cleanRef,
+  optionalField,
+  optionalNumber,
+  optionalText,
+  parseJson,
+  requirePositiveInteger,
+  requireText,
+  roleRunFromRow,
+  runFromRow,
+  sameRef,
+  taskFromRow,
+  uniqueSorted,
+  validateActor,
+  type SqlRow,
+} from "./rows.js";
 import type {
   Actor,
   Approval,
@@ -50,10 +72,6 @@ import type {
   TaskStatus,
   VersionedRef,
 } from "./types.js";
-
-interface SqlRow {
-  [key: string]: null | number | bigint | string | Uint8Array;
-}
 
 export interface SqliteControlPlaneConfig {
   databasePath: string;
@@ -122,6 +140,22 @@ interface InitialTransition {
   occurredAt: string;
 }
 
+interface TransitionRecord extends InitialTransition {
+  ownerId: string;
+  fromStatus?: string;
+  fromVersion?: number;
+  leaseToken?: number;
+}
+
+const TRANSITION_TABLES = {
+  task: { table: "task_transitions", ownerColumn: "task_id", idPrefix: "task_transition" },
+  run: { table: "run_transitions", ownerColumn: "run_id", idPrefix: "run_transition" },
+  roleRun: { table: "role_run_transitions", ownerColumn: "role_run_id", idPrefix: "role_run_transition" },
+  approval: { table: "approval_transitions", ownerColumn: "approval_id", idPrefix: "approval_transition" },
+} as const;
+
+type TransitionKind = keyof typeof TRANSITION_TABLES;
+
 interface ApprovalCreation {
   approvalId: string;
   taskId: string;
@@ -145,197 +179,6 @@ interface DecisionRow extends SqlRow {
 
 const systemClock: Clock = { now: () => new Date().toISOString() };
 const randomIds: IdGenerator = { next: (prefix) => `${prefix}_${randomUUID()}` };
-
-function requireText(label: string, value: string): void {
-  if (value.trim().length === 0) {
-    fail("invalid_input", `${label} must not be empty`);
-  }
-}
-
-function requirePositiveInteger(label: string, value: number): void {
-  if (!Number.isSafeInteger(value) || value <= 0) {
-    fail("invalid_input", `${label} must be a positive integer`);
-  }
-}
-
-function asText(row: SqlRow, key: string): string {
-  const value = row[key];
-  if (typeof value !== "string") {
-    throw new Error(`Expected text column: ${key}`);
-  }
-  return value;
-}
-
-function asNumber(row: SqlRow, key: string): number {
-  const value = row[key];
-  if (typeof value !== "number") {
-    throw new Error(`Expected numeric column: ${key}`);
-  }
-  return value;
-}
-
-function optionalText(row: SqlRow, key: string): string | undefined {
-  const value = row[key];
-  return value === null || value === undefined ? undefined : asText(row, key);
-}
-
-function optionalNumber(row: SqlRow, key: string): number | undefined {
-  const value = row[key];
-  return value === null || value === undefined ? undefined : asNumber(row, key);
-}
-
-function parseJson<T>(value: string): T {
-  return JSON.parse(value) as T;
-}
-
-function uniqueSorted(values: readonly string[], label: string): string[] {
-  const normalized = values.map((value) => {
-    requireText(label, value);
-    return value;
-  });
-  const unique = [...new Set(normalized)].sort();
-  if (unique.length !== normalized.length) {
-    fail("invalid_input", `${label} must not contain duplicates`);
-  }
-  return unique;
-}
-
-function validateActor(actor: Actor): void {
-  requireText("actorId", actor.actorId);
-  uniqueSorted(actor.roles, "actor role");
-}
-
-function refFromColumns(row: SqlRow, prefix: string): VersionedRef | undefined {
-  const id = optionalText(row, `${prefix}_id`);
-  if (id === undefined) {
-    return undefined;
-  }
-  return {
-    id,
-    version: asText(row, `${prefix}_version`),
-    digest: asText(row, `${prefix}_digest`),
-  };
-}
-
-function taskFromRow(row: SqlRow): Task {
-  return {
-    taskId: asText(row, "task_id"),
-    version: asNumber(row, "version"),
-    status: asText(row, "status") as Task["status"],
-    goal: asText(row, "goal"),
-    prd: refFromColumns(row, "prd")!,
-    ...(refFromColumns(row, "context") === undefined ? {} : { contextManifest: refFromColumns(row, "context")! }),
-    ...(refFromColumns(row, "trd") === undefined ? {} : { trd: refFromColumns(row, "trd")! }),
-    ...(optionalText(row, "outcome") === undefined
-      ? {}
-      : { outcome: optionalText(row, "outcome") as NonNullable<Task["outcome"]> }),
-    ...(optionalText(row, "blocked_reason") === undefined
-      ? {}
-      : { blockedReason: optionalText(row, "blocked_reason")!, resumeToStatus: optionalText(row, "resume_to_status") as TaskStatus }),
-    createdAt: asText(row, "created_at"),
-    updatedAt: asText(row, "updated_at"),
-    ...(optionalText(row, "closed_at") === undefined ? {} : { closedAt: optionalText(row, "closed_at")! }),
-  };
-}
-
-function approvalFromRow(row: SqlRow): Approval {
-  return {
-    approvalId: asText(row, "approval_id"),
-    taskId: asText(row, "task_id"),
-    version: asNumber(row, "version"),
-    gate: asText(row, "gate_type") as Approval["gate"],
-    subjectType: asText(row, "subject_type"),
-    subject: {
-      id: asText(row, "subject_id"),
-      version: asText(row, "subject_version"),
-      digest: asText(row, "subject_digest"),
-    },
-    policyVersion: asText(row, "policy_version"),
-    requiredRoles: parseJson<string[]>(asText(row, "required_roles_json")),
-    requestedBy: asText(row, "requested_by"),
-    status: asText(row, "status") as ApprovalStatus,
-    ...(optionalText(row, "expires_at") === undefined ? {} : { expiresAt: optionalText(row, "expires_at")! }),
-    createdAt: asText(row, "created_at"),
-    updatedAt: asText(row, "updated_at"),
-  };
-}
-
-function approvalDecisionFromRow(row: SqlRow): ApprovalDecision {
-  return {
-    decisionId: asText(row, "decision_id"),
-    approvalId: asText(row, "approval_id"),
-    approvalVersion: asNumber(row, "approval_version"),
-    decision: asText(row, "decision") as ApprovalDecision["decision"],
-    authorityId: asText(row, "authority_id"),
-    authorityRole: asText(row, "authority_role"),
-    reason: asText(row, "reason"),
-    conditions: parseJson<ApprovalDecision["conditions"]>(asText(row, "conditions_json")),
-    evidenceRefs: parseJson<string[]>(asText(row, "evidence_refs_json")),
-    decidedAt: asText(row, "decided_at"),
-  };
-}
-
-function runFromRow(row: SqlRow): Run {
-  return {
-    runId: asText(row, "run_id"),
-    taskId: asText(row, "task_id"),
-    version: asNumber(row, "version"),
-    manifestDigest: asText(row, "manifest_digest"),
-    authorizationApprovalId: asText(row, "authorization_approval_id"),
-    status: asText(row, "status") as Run["status"],
-    ...(optionalText(row, "outcome") === undefined
-      ? {}
-      : { outcome: optionalText(row, "outcome") as NonNullable<Run["outcome"]> }),
-    ...(optionalText(row, "pending_outcome") === undefined
-      ? {}
-      : { pendingOutcome: optionalText(row, "pending_outcome") as NonNullable<Run["pendingOutcome"]> }),
-    ...(optionalText(row, "resume_to_status") === undefined
-      ? {}
-      : { resumeToStatus: optionalText(row, "resume_to_status") as NonNullable<Run["resumeToStatus"]> }),
-    ...(optionalText(row, "reason_code") === undefined ? {} : { reasonCode: optionalText(row, "reason_code")! }),
-    createdAt: asText(row, "created_at"),
-    updatedAt: asText(row, "updated_at"),
-    ...(optionalText(row, "settled_at") === undefined ? {} : { settledAt: optionalText(row, "settled_at")! }),
-  };
-}
-
-function roleRunFromRow(row: SqlRow): RoleRun {
-  return {
-    roleRunId: asText(row, "role_run_id"),
-    runId: asText(row, "run_id"),
-    rolePlanId: asText(row, "role_plan_id"),
-    role: asText(row, "role") as RoleRun["role"],
-    attempt: asNumber(row, "attempt"),
-    version: asNumber(row, "version"),
-    status: asText(row, "status") as RoleRunStatus,
-    ...(optionalText(row, "outcome") === undefined
-      ? {}
-      : { outcome: optionalText(row, "outcome") as NonNullable<RoleRun["outcome"]> }),
-    ...(optionalText(row, "runtime_outcome") === undefined
-      ? {}
-      : { runtimeOutcome: optionalText(row, "runtime_outcome") as NonNullable<RoleRun["runtimeOutcome"]> }),
-    ...(optionalText(row, "session_id") === undefined ? {} : { sessionId: optionalText(row, "session_id")! }),
-    inputArtifacts: parseJson<VersionedRef[]>(asText(row, "input_artifacts_json")),
-    outputArtifacts: parseJson<VersionedRef[]>(asText(row, "output_artifacts_json")),
-    toolOperationRefs: parseJson<string[]>(asText(row, "tool_operation_refs_json")),
-    evidenceRefs: parseJson<string[]>(asText(row, "evidence_refs_json")),
-    ...(optionalText(row, "lease_owner") === undefined ? {} : { leaseOwner: optionalText(row, "lease_owner")! }),
-    ...(optionalText(row, "lease_expires_at") === undefined
-      ? {}
-      : { leaseExpiresAt: optionalText(row, "lease_expires_at")! }),
-    leaseToken: asNumber(row, "lease_token"),
-    preparedAt: asText(row, "prepared_at"),
-    ...(optionalText(row, "started_at") === undefined ? {} : { startedAt: optionalText(row, "started_at")! }),
-    ...(optionalText(row, "runtime_ended_at") === undefined
-      ? {}
-      : { runtimeEndedAt: optionalText(row, "runtime_ended_at")! }),
-    ...(optionalText(row, "settled_at") === undefined ? {} : { settledAt: optionalText(row, "settled_at")! }),
-    ...(optionalText(row, "error_code") === undefined ? {} : { errorCode: optionalText(row, "error_code")! }),
-    ...(optionalText(row, "sanitized_error") === undefined
-      ? {}
-      : { sanitizedError: optionalText(row, "sanitized_error")! }),
-  };
-}
 
 export class SqliteControlPlane {
   private readonly database: DatabaseSync;
@@ -376,7 +219,7 @@ export class SqliteControlPlane {
     if (row === undefined) {
       fail("not_found", `Artifact not found: ${ref.id}@${ref.version}`);
     }
-    const artifact = this.artifactFromRow(row);
+    const artifact = artifactFromRow(row);
     if (artifact.digest !== ref.digest) {
       fail("digest_mismatch", `Artifact digest mismatch: ${ref.id}@${ref.version}`);
     }
@@ -404,8 +247,8 @@ export class SqliteControlPlane {
       } catch (error) {
         this.translateConstraint(error, `Task already exists: ${command.taskId}`);
       }
-      this.insertTaskTransition({
-        taskId: command.taskId,
+      this.insertTransition("task", {
+        ownerId: command.taskId,
         commandId: command.commandId,
         toStatus: "intake",
         toVersion: 1,
@@ -540,8 +383,8 @@ export class SqliteControlPlane {
       this.database
         .prepare("INSERT INTO run_manifests (run_id, schema_version, digest, canonical_json, created_at) VALUES (?, '1', ?, ?, ?)")
         .run(command.runId, manifestDigest, canonicalJson, now);
-      this.insertRunTransition({
-        runId: command.runId,
+      this.insertTransition("run", {
+        ownerId: command.runId,
         commandId: command.commandId,
         toStatus: "awaiting_authorization",
         toVersion: 1,
@@ -639,8 +482,8 @@ export class SqliteControlPlane {
       } catch (error) {
         this.translateConstraint(error, `Run already has an unsettled RoleRun: ${run.runId}`);
       }
-      this.insertRoleRunTransition({
-        roleRunId: command.roleRunId,
+      this.insertTransition("roleRun", {
+        ownerId: command.roleRunId,
         commandId: command.commandId,
         toStatus: "prepared",
         toVersion: 1,
@@ -886,7 +729,7 @@ export class SqliteControlPlane {
         fail("invalid_transition", "Verifier RoleRun is not ready to submit a result");
       }
       this.assertRunApprovalsEffective(run, this.getRunManifest(run.runId).manifest);
-      if (!roleRun.inputArtifacts.some((ref) => this.sameRef(ref, command.executionResult))) {
+      if (!roleRun.inputArtifacts.some((ref) => sameRef(ref, command.executionResult))) {
         fail("invalid_input", "Verifier did not receive the submitted ExecutionResult");
       }
       this.validateVerificationRouting(command.verdict, command.findingClass);
@@ -1159,24 +1002,19 @@ export class SqliteControlPlane {
   }
 
   listTaskTransitions(taskId: string): StoredTransition[] {
-    return this.readTransitions("task_transitions", "task_id", taskId);
+    return this.readTransitions("task", taskId);
   }
 
   listRunTransitions(runId: string): StoredTransition[] {
-    return this.readTransitions("run_transitions", "run_id", runId);
+    return this.readTransitions("run", runId);
   }
 
   listRoleRunTransitions(roleRunId: string): StoredTransition[] {
-    return this.readTransitions("role_run_transitions", "role_run_id", roleRunId, true);
+    return this.readTransitions("roleRun", roleRunId);
   }
 
   getApprovalRef(approvalId: string): VersionedRef {
-    const approval = this.requireApproval(approvalId);
-    return {
-      id: approval.approvalId,
-      version: String(approval.version),
-      digest: digestJson(approval),
-    };
+    return approvalRef(this.requireApproval(approvalId));
   }
 
   // State changes, transitions, outbox entries and the replay result share this DB transaction.
@@ -1220,19 +1058,6 @@ export class SqliteControlPlane {
     }
   }
 
-  private artifactFromRow(row: SqlRow): Artifact {
-    const canonicalJson = asText(row, "canonical_json");
-    return {
-      id: asText(row, "artifact_id"),
-      version: asText(row, "artifact_version"),
-      kind: asText(row, "kind"),
-      digest: asText(row, "digest"),
-      content: parseJson<JsonValue>(canonicalJson),
-      canonicalJson,
-      createdBy: asText(row, "created_by"),
-      createdAt: asText(row, "created_at"),
-    };
-  }
 
   private insertArtifact(input: ArtifactInput, now: string, expectedKind?: string): Artifact {
     requireText("artifact id", input.id);
@@ -1251,7 +1076,7 @@ export class SqliteControlPlane {
       .prepare("SELECT * FROM artifacts WHERE artifact_id = ? AND artifact_version = ?")
       .get(input.id, input.version) as SqlRow | undefined;
     if (existing !== undefined) {
-      const artifact = this.artifactFromRow(existing);
+      const artifact = artifactFromRow(existing);
       if (artifact.digest !== digest || artifact.kind !== input.kind || artifact.createdBy !== input.createdBy) {
         fail("already_exists", `Artifact version already exists with different content: ${input.id}@${input.version}`);
       }
@@ -1264,7 +1089,7 @@ export class SqliteControlPlane {
         ) VALUES (?, ?, ?, ?, ?, ?, ?)
       `)
       .run(input.id, input.version, input.kind, digest, canonicalJson, input.createdBy, now);
-    return this.artifactFromRow(
+    return artifactFromRow(
       this.database
         .prepare("SELECT * FROM artifacts WHERE artifact_id = ? AND artifact_version = ?")
         .get(input.id, input.version) as SqlRow,
@@ -1279,36 +1104,28 @@ export class SqliteControlPlane {
     return artifact;
   }
 
-  private requireTask(taskId: string): Task {
-    const row = this.database.prepare("SELECT * FROM tasks WHERE task_id = ?").get(taskId) as SqlRow | undefined;
+  private requireRow(sql: string, params: readonly string[], notFoundMessage: string): SqlRow {
+    const row = this.database.prepare(sql).get(...params) as SqlRow | undefined;
     if (row === undefined) {
-      fail("not_found", `Task not found: ${taskId}`);
+      fail("not_found", notFoundMessage);
     }
-    return taskFromRow(row);
+    return row;
+  }
+
+  private requireTask(taskId: string): Task {
+    return taskFromRow(this.requireRow("SELECT * FROM tasks WHERE task_id = ?", [taskId], `Task not found: ${taskId}`));
   }
 
   private requireApproval(approvalId: string): Approval {
-    const row = this.database.prepare("SELECT * FROM approvals WHERE approval_id = ?").get(approvalId) as SqlRow | undefined;
-    if (row === undefined) {
-      fail("not_found", `Approval not found: ${approvalId}`);
-    }
-    return approvalFromRow(row);
+    return approvalFromRow(this.requireRow("SELECT * FROM approvals WHERE approval_id = ?", [approvalId], `Approval not found: ${approvalId}`));
   }
 
   private requireRun(runId: string): Run {
-    const row = this.database.prepare("SELECT * FROM runs WHERE run_id = ?").get(runId) as SqlRow | undefined;
-    if (row === undefined) {
-      fail("not_found", `Run not found: ${runId}`);
-    }
-    return runFromRow(row);
+    return runFromRow(this.requireRow("SELECT * FROM runs WHERE run_id = ?", [runId], `Run not found: ${runId}`));
   }
 
   private requireRoleRun(roleRunId: string): RoleRun {
-    const row = this.database.prepare("SELECT * FROM role_runs WHERE role_run_id = ?").get(roleRunId) as SqlRow | undefined;
-    if (row === undefined) {
-      fail("not_found", `RoleRun not found: ${roleRunId}`);
-    }
-    return roleRunFromRow(row);
+    return roleRunFromRow(this.requireRow("SELECT * FROM role_runs WHERE role_run_id = ?", [roleRunId], `RoleRun not found: ${roleRunId}`));
   }
 
   private assertVersion(label: string, actual: number, expected: number): void {
@@ -1405,8 +1222,8 @@ export class SqliteControlPlane {
     if (result.changes !== 1) {
       fail("version_conflict", `Task changed while command was running: ${task.taskId}`);
     }
-    this.insertTaskTransition({
-      taskId: task.taskId,
+    this.insertTransition("task", {
+      ownerId: task.taskId,
       commandId: change.commandId,
       fromStatus: task.status,
       toStatus: change.status,
@@ -1459,8 +1276,8 @@ export class SqliteControlPlane {
     if (result.changes !== 1) {
       fail("version_conflict", `Run changed while command was running: ${run.runId}`);
     }
-    this.insertRunTransition({
-      runId: run.runId,
+    this.insertTransition("run", {
+      ownerId: run.runId,
       commandId: change.commandId,
       fromStatus: run.status,
       toStatus: change.status,
@@ -1502,7 +1319,7 @@ export class SqliteControlPlane {
         settled ? change.outcome! : null,
         change.runtimeOutcome ?? roleRun.runtimeOutcome ?? null,
         change.sessionId ?? roleRun.sessionId ?? null,
-        canonicalizeJson(outputArtifacts.map((ref) => this.cleanRef(ref))),
+        canonicalizeJson(outputArtifacts.map((ref) => cleanRef(ref))),
         canonicalizeJson(uniqueSorted(toolOperationRefs, "Tool Operation ref")),
         canonicalizeJson(uniqueSorted(evidenceRefs, "evidence ref")),
         clearLease ? null : (change.leaseOwner ?? roleRun.leaseOwner ?? null),
@@ -1520,8 +1337,8 @@ export class SqliteControlPlane {
     if (result.changes !== 1) {
       fail("fencing_rejected", `RoleRun version or fencing token changed: ${roleRun.roleRunId}`);
     }
-    this.insertRoleRunTransition({
-      roleRunId: roleRun.roleRunId,
+    this.insertTransition("roleRun", {
+      ownerId: roleRun.roleRunId,
       commandId: change.commandId,
       fromStatus: roleRun.status,
       toStatus: change.status,
@@ -1537,85 +1354,42 @@ export class SqliteControlPlane {
     return this.requireRoleRun(roleRun.roleRunId);
   }
 
-  private insertTaskTransition(input: InitialTransition & { taskId: string; fromStatus?: string; fromVersion?: number }): void {
-    this.database
-      .prepare(`
-        INSERT INTO task_transitions (
-          transition_id, task_id, command_id, from_status, to_status, from_version, to_version,
-          actor_id, actor_type, actor_roles_json, reason_code, refs_json, evidence_refs_json, occurred_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `)
-      .run(
-        this.ids.next("task_transition"),
-        input.taskId,
-        input.commandId,
-        input.fromStatus ?? null,
-        input.toStatus,
-        input.fromVersion ?? null,
-        input.toVersion,
-        input.actor.actorId,
-        input.actor.actorType,
-        canonicalizeJson(uniqueSorted(input.actor.roles, "actor role")),
-        input.reasonCode,
-        canonicalizeJson(input.refs.map((ref) => this.cleanRef(ref))),
-        canonicalizeJson(uniqueSorted(input.evidenceRefs, "evidence ref")),
-        input.occurredAt,
-      );
-  }
 
-  private insertRunTransition(input: InitialTransition & { runId: string; fromStatus?: string; fromVersion?: number }): void {
-    this.database
-      .prepare(`
-        INSERT INTO run_transitions (
-          transition_id, run_id, command_id, from_status, to_status, from_version, to_version,
-          actor_id, actor_type, actor_roles_json, reason_code, refs_json, evidence_refs_json, occurred_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `)
-      .run(
-        this.ids.next("run_transition"),
-        input.runId,
-        input.commandId,
-        input.fromStatus ?? null,
-        input.toStatus,
-        input.fromVersion ?? null,
-        input.toVersion,
-        input.actor.actorId,
-        input.actor.actorType,
-        canonicalizeJson(uniqueSorted(input.actor.roles, "actor role")),
-        input.reasonCode,
-        canonicalizeJson(input.refs.map((ref) => this.cleanRef(ref))),
-        canonicalizeJson(uniqueSorted(input.evidenceRefs, "evidence ref")),
-        input.occurredAt,
-      );
-  }
 
-  private insertRoleRunTransition(
-    input: InitialTransition & { roleRunId: string; fromStatus?: string; fromVersion?: number; leaseToken: number },
-  ): void {
+
+  private insertTransition(kind: TransitionKind, input: TransitionRecord): void {
+    const { table, ownerColumn, idPrefix } = TRANSITION_TABLES[kind];
+    const leaseColumn = kind === "roleRun" ? ", lease_token" : "";
+    const values: (string | number | null)[] = [
+      this.ids.next(idPrefix),
+      input.ownerId,
+      input.commandId,
+      input.fromStatus ?? null,
+      input.toStatus,
+      input.fromVersion ?? null,
+      input.toVersion,
+      input.actor.actorId,
+      input.actor.actorType,
+      canonicalizeJson(uniqueSorted(input.actor.roles, "actor role")),
+      input.reasonCode,
+      canonicalizeJson(input.refs.map(cleanRef)),
+      canonicalizeJson(uniqueSorted(input.evidenceRefs, "evidence ref")),
+    ];
+    if (kind === "roleRun") {
+      if (input.leaseToken === undefined) {
+        throw new Error("RoleRun transition requires a lease token");
+      }
+      values.push(input.leaseToken);
+    }
+    values.push(input.occurredAt);
     this.database
       .prepare(`
-        INSERT INTO role_run_transitions (
-          transition_id, role_run_id, command_id, from_status, to_status, from_version, to_version,
-          actor_id, actor_type, actor_roles_json, reason_code, refs_json, evidence_refs_json, lease_token, occurred_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO ${table} (
+          transition_id, ${ownerColumn}, command_id, from_status, to_status, from_version, to_version,
+          actor_id, actor_type, actor_roles_json, reason_code, refs_json, evidence_refs_json${leaseColumn}, occurred_at
+        ) VALUES (${values.map(() => "?").join(", ")})
       `)
-      .run(
-        this.ids.next("role_run_transition"),
-        input.roleRunId,
-        input.commandId,
-        input.fromStatus ?? null,
-        input.toStatus,
-        input.fromVersion ?? null,
-        input.toVersion,
-        input.actor.actorId,
-        input.actor.actorType,
-        canonicalizeJson(uniqueSorted(input.actor.roles, "actor role")),
-        input.reasonCode,
-        canonicalizeJson(input.refs.map((ref) => this.cleanRef(ref))),
-        canonicalizeJson(uniqueSorted(input.evidenceRefs, "evidence ref")),
-        input.leaseToken,
-        input.occurredAt,
-      );
+      .run(...values);
   }
 
   private insertApproval(input: ApprovalCreation): Approval {
@@ -1657,8 +1431,8 @@ export class SqliteControlPlane {
     } catch (error) {
       this.translateConstraint(error, `Approval already exists or subject already has a pending request: ${input.approvalId}`);
     }
-    this.insertApprovalTransition({
-      approvalId: input.approvalId,
+    this.insertTransition("approval", {
+      ownerId: input.approvalId,
       commandId: input.commandId,
       toStatus: "pending",
       toVersion: 1,
@@ -1671,33 +1445,6 @@ export class SqliteControlPlane {
     return this.requireApproval(input.approvalId);
   }
 
-  private insertApprovalTransition(
-    input: InitialTransition & { approvalId: string; fromStatus?: string; fromVersion?: number },
-  ): void {
-    this.database
-      .prepare(`
-        INSERT INTO approval_transitions (
-          transition_id, approval_id, command_id, from_status, to_status, from_version, to_version,
-          actor_id, actor_type, actor_roles_json, reason_code, refs_json, evidence_refs_json, occurred_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `)
-      .run(
-        this.ids.next("approval_transition"),
-        input.approvalId,
-        input.commandId,
-        input.fromStatus ?? null,
-        input.toStatus,
-        input.fromVersion ?? null,
-        input.toVersion,
-        input.actor.actorId,
-        input.actor.actorType,
-        canonicalizeJson(uniqueSorted(input.actor.roles, "actor role")),
-        input.reasonCode,
-        canonicalizeJson(input.refs.map((ref) => this.cleanRef(ref))),
-        canonicalizeJson(uniqueSorted(input.evidenceRefs, "evidence ref")),
-        input.occurredAt,
-      );
-  }
 
   private writeApprovalTransition(
     approval: Approval,
@@ -1712,8 +1459,8 @@ export class SqliteControlPlane {
     if (result.changes !== 1) {
       fail("version_conflict", `Approval changed while command was running: ${approval.approvalId}`);
     }
-    this.insertApprovalTransition({
-      approvalId: approval.approvalId,
+    this.insertTransition("approval", {
+      ownerId: approval.approvalId,
       commandId: command.commandId,
       fromStatus: approval.status,
       toStatus: status,
@@ -1797,7 +1544,7 @@ export class SqliteControlPlane {
           actor: command.actor,
           commandId: command.commandId,
           reasonCode: `trd_${aggregate}`,
-          refs: [approval.subject, this.approvalRef(updatedApproval)],
+          refs: [approval.subject, approvalRef(updatedApproval)],
           evidenceRefs: command.evidenceRefs,
         });
         return { approval: updatedApproval, task: updatedTask };
@@ -1811,7 +1558,7 @@ export class SqliteControlPlane {
           actor: command.actor,
           commandId: command.commandId,
           reasonCode: "trd_changes_requested",
-          refs: [approval.subject, this.approvalRef(updatedApproval)],
+          refs: [approval.subject, approvalRef(updatedApproval)],
           evidenceRefs: command.evidenceRefs,
         });
         return { approval: updatedApproval, task: updatedTask };
@@ -1823,7 +1570,7 @@ export class SqliteControlPlane {
         actor: command.actor,
         commandId: command.commandId,
         reasonCode: "trd_rejected",
-        refs: [approval.subject, this.approvalRef(updatedApproval)],
+        refs: [approval.subject, approvalRef(updatedApproval)],
         evidenceRefs: command.evidenceRefs,
       });
       return { approval: updatedApproval, task: updatedTask };
@@ -1844,7 +1591,7 @@ export class SqliteControlPlane {
         reasonCode: "run_authorized",
         actor: command.actor,
         commandId: command.commandId,
-        refs: [this.approvalRef(updatedApproval)],
+        refs: [approvalRef(updatedApproval)],
         evidenceRefs: command.evidenceRefs,
       });
       const updatedTask = this.writeTaskTransition(task, {
@@ -1852,7 +1599,7 @@ export class SqliteControlPlane {
         actor: command.actor,
         commandId: command.commandId,
         reasonCode: "run_authorized",
-        refs: [{ id: run.runId, version: "1", digest: run.manifestDigest }, this.approvalRef(updatedApproval)],
+        refs: [{ id: run.runId, version: "1", digest: run.manifestDigest }, approvalRef(updatedApproval)],
         evidenceRefs: command.evidenceRefs,
       });
       return { approval: updatedApproval, task: updatedTask, run: updatedRun };
@@ -1864,7 +1611,7 @@ export class SqliteControlPlane {
       reasonCode: aggregate === "changes_requested" ? "run_changes_requested" : "run_rejected",
       actor: command.actor,
       commandId: command.commandId,
-      refs: [this.approvalRef(updatedApproval)],
+      refs: [approvalRef(updatedApproval)],
       evidenceRefs: command.evidenceRefs,
     });
     if (aggregate === "changes_requested") {
@@ -1877,7 +1624,7 @@ export class SqliteControlPlane {
       actor: command.actor,
       commandId: command.commandId,
       reasonCode: "run_authorization_rejected",
-      refs: [this.approvalRef(updatedApproval)],
+      refs: [approvalRef(updatedApproval)],
       evidenceRefs: command.evidenceRefs,
     });
     return { approval: updatedApproval, task: updatedTask, run: updatedRun };
@@ -1935,7 +1682,7 @@ export class SqliteControlPlane {
       ["ContextManifest", task.contextManifest, manifest.inputs.contextManifest],
       ["TRD", task.trd, manifest.inputs.trd],
     ] as const) {
-      if (!this.sameRef(expected, actual)) {
+      if (!sameRef(expected, actual)) {
         fail("digest_mismatch", `RunManifest ${label} does not match the Task`);
       }
     }
@@ -1950,13 +1697,13 @@ export class SqliteControlPlane {
     let hasTrdApproval = false;
     for (const ref of manifest.inputs.prerequisiteApprovals) {
       const approval = this.requireApproval(ref.id);
-      if (!this.sameRef(this.approvalRef(approval), ref)) {
+      if (!sameRef(approvalRef(approval), ref)) {
         fail("digest_mismatch", `Approval snapshot does not match RunManifest: ${ref.id}`);
       }
       if (approval.status !== "approved") {
         fail("approval_invalid", `Prerequisite Approval is not effective: ${ref.id}`);
       }
-      if (approval.gate === "trd_approval" && this.sameRef(approval.subject, task.trd)) {
+      if (approval.gate === "trd_approval" && sameRef(approval.subject, task.trd)) {
         hasTrdApproval = true;
       }
     }
@@ -2007,7 +1754,7 @@ export class SqliteControlPlane {
     }
     for (const ref of manifest.inputs.prerequisiteApprovals) {
       const approval = this.requireApproval(ref.id);
-      if (!this.sameRef(this.approvalRef(approval), ref) || approval.status !== "approved") {
+      if (!sameRef(approvalRef(approval), ref) || approval.status !== "approved") {
         fail("approval_invalid", `Run prerequisite Approval is no longer effective: ${ref.id}`);
       }
     }
@@ -2287,6 +2034,7 @@ export class SqliteControlPlane {
       );
       return { approval: updatedApproval, task };
     }
+    const resumeToStatus = approval.gate === "trd_approval" ? "drafting_trd" : "planning";
     const run = this.unsettledRunForTask(task.taskId);
     if (run !== undefined) {
       if (command.expectedRunVersion === undefined) {
@@ -2301,13 +2049,12 @@ export class SqliteControlPlane {
           reasonCode: command.reasonCode,
           actor: command.actor,
           commandId: command.commandId,
-          refs: [this.approvalRef(updatedApproval)],
+          refs: [approvalRef(updatedApproval)],
           evidenceRefs: command.evidenceRefs,
         });
         return { approval: updatedApproval, task, run: updatedRun };
       }
       if (!["stopping", "settled"].includes(run.status)) {
-        const resumeToStatus = approval.gate === "trd_approval" ? "drafting_trd" : "planning";
         const updatedTask =
           task.status === "blocked"
             ? task
@@ -2318,7 +2065,7 @@ export class SqliteControlPlane {
                 actor: command.actor,
                 commandId: command.commandId,
                 reasonCode: command.reasonCode,
-                refs: [this.approvalRef(updatedApproval)],
+                refs: [approvalRef(updatedApproval)],
                 evidenceRefs: command.evidenceRefs,
               });
         const updatedRun = this.writeRunTransition(run, {
@@ -2327,13 +2074,12 @@ export class SqliteControlPlane {
           reasonCode: command.reasonCode,
           actor: command.actor,
           commandId: command.commandId,
-          refs: [this.approvalRef(updatedApproval)],
+          refs: [approvalRef(updatedApproval)],
           evidenceRefs: command.evidenceRefs,
         });
         return { approval: updatedApproval, task: updatedTask, run: updatedRun };
       }
     }
-    const resumeToStatus = approval.gate === "trd_approval" ? "drafting_trd" : "planning";
     const updatedTask = this.writeTaskTransition(task, {
       status: task.status === "awaiting_trd_approval" ? "drafting_trd" : "blocked",
       ...(task.status === "awaiting_trd_approval"
@@ -2342,7 +2088,7 @@ export class SqliteControlPlane {
       actor: command.actor,
       commandId: command.commandId,
       reasonCode: command.reasonCode,
-      refs: [this.approvalRef(updatedApproval)],
+      refs: [approvalRef(updatedApproval)],
       evidenceRefs: command.evidenceRefs,
     });
     return { approval: updatedApproval, task: updatedTask };
@@ -2364,18 +2110,13 @@ export class SqliteControlPlane {
       .run(this.ids.next("event"), eventType, aggregateType, aggregateId, canonicalizeJson(payload), now);
   }
 
-  private approvalRef(approval: Approval): VersionedRef {
-    return { id: approval.approvalId, version: String(approval.version), digest: digestJson(approval) };
-  }
 
   private requireRunByAuthorization(approvalId: string): Run {
-    const row = this.database
-      .prepare("SELECT * FROM runs WHERE authorization_approval_id = ?")
-      .get(approvalId) as SqlRow | undefined;
-    if (row === undefined) {
-      fail("not_found", `Run not found for Authorization Approval: ${approvalId}`);
-    }
-    return runFromRow(row);
+    return runFromRow(this.requireRow(
+      "SELECT * FROM runs WHERE authorization_approval_id = ?",
+      [approvalId],
+      `Run not found for Authorization Approval: ${approvalId}`,
+    ));
   }
 
   private unsettledRunForTask(taskId: string): Run | undefined {
@@ -2392,15 +2133,10 @@ export class SqliteControlPlane {
     return row === undefined ? undefined : roleRunFromRow(row);
   }
 
-  private sameRef(left: VersionedRef, right: VersionedRef): boolean {
-    return left.id === right.id && left.version === right.version && left.digest === right.digest;
-  }
 
-  private cleanRef(ref: VersionedRef): VersionedRef {
-    return { id: ref.id, version: ref.version, digest: ref.digest };
-  }
 
-  private readTransitions(table: string, ownerColumn: string, ownerId: string, hasLease = false): StoredTransition[] {
+  private readTransitions(kind: TransitionKind, ownerId: string): StoredTransition[] {
+    const { table, ownerColumn } = TRANSITION_TABLES[kind];
     const rows = this.database
       .prepare(`SELECT *, ${ownerColumn} AS owner_id FROM ${table} WHERE ${ownerColumn} = ? ORDER BY occurred_at, transition_id`)
       .all(ownerId) as SqlRow[];
@@ -2408,9 +2144,9 @@ export class SqliteControlPlane {
       transitionId: asText(row, "transition_id"),
       ownerId: asText(row, "owner_id"),
       commandId: asText(row, "command_id"),
-      ...(optionalText(row, "from_status") === undefined ? {} : { fromStatus: optionalText(row, "from_status")! }),
+      ...optionalField("fromStatus", optionalText(row, "from_status")),
       toStatus: asText(row, "to_status"),
-      ...(optionalNumber(row, "from_version") === undefined ? {} : { fromVersion: optionalNumber(row, "from_version")! }),
+      ...optionalField("fromVersion", optionalNumber(row, "from_version")),
       toVersion: asNumber(row, "to_version"),
       actor: {
         actorId: asText(row, "actor_id"),
@@ -2420,7 +2156,7 @@ export class SqliteControlPlane {
       reasonCode: asText(row, "reason_code"),
       refs: parseJson<VersionedRef[]>(asText(row, "refs_json")),
       evidenceRefs: parseJson<string[]>(asText(row, "evidence_refs_json")),
-      ...(hasLease ? { leaseToken: asNumber(row, "lease_token") } : {}),
+      ...(kind === "roleRun" ? { leaseToken: asNumber(row, "lease_token") } : {}),
       occurredAt: asText(row, "occurred_at"),
     }));
   }
