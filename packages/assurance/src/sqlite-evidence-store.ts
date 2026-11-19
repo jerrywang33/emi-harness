@@ -132,16 +132,8 @@ export class SqliteEvidenceStore {
   put(input: EvidenceRecordInput): EvidenceRecord {
     const normalized = normalizeInput(input);
     const inputDigest = digestJson(normalized);
-    const existing = this.find(normalized.evidenceId, normalized.version);
-    if (existing !== undefined) {
-      const storedInput = this.database
-        .prepare("SELECT input_digest FROM evidence_records WHERE evidence_id = ? AND evidence_version = ?")
-        .get(normalized.evidenceId, normalized.version) as SqlRow;
-      if (asText(storedInput, "input_digest") !== inputDigest) {
-        fail("evidence_conflict", `Evidence ID was reused with different content: ${normalized.evidenceId}@${normalized.version}`);
-      }
-      return existing;
-    }
+    const existing = this.findReplay(normalized, inputDigest);
+    if (existing !== undefined) return existing;
     // Timestamp only the first insertion; replay equality is based on caller input above.
     const createdAt = this.clock.now();
     const envelope = { ...normalized, createdAt };
@@ -170,23 +162,15 @@ export class SqliteEvidenceStore {
           storedRecord.createdAt,
         );
     } catch (error) {
-      const concurrent = this.find(normalized.evidenceId, normalized.version);
-      if (concurrent !== undefined) {
-        const storedInput = this.database
-          .prepare("SELECT input_digest FROM evidence_records WHERE evidence_id = ? AND evidence_version = ?")
-          .get(normalized.evidenceId, normalized.version) as SqlRow;
-        if (asText(storedInput, "input_digest") !== inputDigest) {
-          fail("evidence_conflict", `Evidence ID was reused with different content: ${normalized.evidenceId}@${normalized.version}`);
-        }
-        return concurrent;
-      }
+      const concurrent = this.findReplay(normalized, inputDigest);
+      if (concurrent !== undefined) return concurrent;
       throw error;
     }
     return this.get({ id: storedRecord.evidenceId, version: storedRecord.version, digest: storedRecord.digest });
   }
 
   get(ref: VersionedRef): EvidenceRecord {
-    const record = this.find(ref.id, ref.version);
+    const record = this.find(ref.id, ref.version)?.record;
     if (record === undefined) fail("not_found", `Evidence not found: ${ref.id}@${ref.version}`);
     if (record.digest !== ref.digest) fail("evidence_corrupt", `Evidence ref digest mismatch: ${ref.id}@${ref.version}`);
     return record;
@@ -197,10 +181,18 @@ export class SqliteEvidenceStore {
       .map(recordFromRow);
   }
 
-  private find(evidenceId: string, version: string): EvidenceRecord | undefined {
+  private findReplay(input: EvidenceRecordInput, inputDigest: string): EvidenceRecord | undefined {
+    const existing = this.find(input.evidenceId, input.version);
+    if (existing !== undefined && existing.inputDigest !== inputDigest) {
+      fail("evidence_conflict", `Evidence ID was reused with different content: ${input.evidenceId}@${input.version}`);
+    }
+    return existing?.record;
+  }
+
+  private find(evidenceId: string, version: string): { record: EvidenceRecord; inputDigest: string } | undefined {
     const row = this.database
       .prepare("SELECT * FROM evidence_records WHERE evidence_id = ? AND evidence_version = ?")
       .get(evidenceId, version) as SqlRow | undefined;
-    return row === undefined ? undefined : recordFromRow(row);
+    return row === undefined ? undefined : { record: recordFromRow(row), inputDigest: asText(row, "input_digest") };
   }
 }
