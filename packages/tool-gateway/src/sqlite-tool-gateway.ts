@@ -23,7 +23,6 @@ import type {
   ToolInvocationRequest,
   ToolOperation,
   ToolOperationStatus,
-  ToolPlanRef,
   ToolPolicyPort,
   VersionedRef,
 } from "./types.js";
@@ -75,6 +74,16 @@ function optionalText(row: SqlRow, key: string): string | undefined {
   return value === null || value === undefined ? undefined : asText(row, key);
 }
 
+function optionalField<K extends string, V>(key: K, value: V | undefined): { [P in K]?: V } {
+  return (value === undefined ? {} : { [key]: value }) as { [P in K]?: V };
+}
+
+const TERMINAL_STATUSES: readonly ToolOperationStatus[] = ["denied", "failed", "succeeded"];
+
+function isTerminal(status: ToolOperationStatus): boolean {
+  return TERMINAL_STATUSES.includes(status);
+}
+
 function parseJson<T>(value: string): T {
   return JSON.parse(value) as T;
 }
@@ -117,13 +126,11 @@ function operationFromRow(row: SqlRow): ToolOperation {
       definitionDigest: asText(row, "definition_digest"),
       policyRef: parseJson<VersionedRef>(asText(row, "policy_ref_json")),
     },
-    ...(optionalText(row, "error_code") === undefined ? {} : { errorCode: optionalText(row, "error_code")! }),
-    ...(optionalText(row, "sanitized_error") === undefined
-      ? {}
-      : { sanitizedError: optionalText(row, "sanitized_error")! }),
+    ...optionalField("errorCode", optionalText(row, "error_code")),
+    ...optionalField("sanitizedError", optionalText(row, "sanitized_error")),
     createdAt: asText(row, "created_at"),
     updatedAt: asText(row, "updated_at"),
-    ...(optionalText(row, "terminal_at") === undefined ? {} : { terminalAt: optionalText(row, "terminal_at")! }),
+    ...optionalField("terminalAt", optionalText(row, "terminal_at")),
   };
 }
 
@@ -175,10 +182,8 @@ function resultFromRow(row: SqlRow): OperationResult {
     output,
     outputDigest,
     evidenceRefs: parseJson<string[]>(asText(row, "evidence_refs_json")),
-    ...(optionalText(row, "error_code") === undefined ? {} : { errorCode: optionalText(row, "error_code")! }),
-    ...(optionalText(row, "sanitized_error") === undefined
-      ? {}
-      : { sanitizedError: optionalText(row, "sanitized_error")! }),
+    ...optionalField("errorCode", optionalText(row, "error_code")),
+    ...optionalField("sanitizedError", optionalText(row, "sanitized_error")),
     createdAt: asText(row, "created_at"),
   };
 }
@@ -277,9 +282,7 @@ export class SqliteToolGateway {
   }
 
   getOperation(operationId: string): ToolOperation {
-    const row = this.database.prepare("SELECT * FROM operations WHERE operation_id = ?").get(operationId) as
-      | SqlRow
-      | undefined;
+    const row = this.findRow("operations", operationId);
     if (row === undefined) {
       fail("not_found", `Tool Operation not found: ${operationId}`);
     }
@@ -294,9 +297,7 @@ export class SqliteToolGateway {
   }
 
   getDecision(operationId: string): PolicyDecision {
-    const row = this.database.prepare("SELECT * FROM policy_decisions WHERE operation_id = ?").get(operationId) as
-      | SqlRow
-      | undefined;
+    const row = this.findRow("policy_decisions", operationId);
     if (row === undefined) {
       fail("not_found", `Policy Decision not found for Operation: ${operationId}`);
     }
@@ -304,9 +305,7 @@ export class SqliteToolGateway {
   }
 
   getIntent(operationId: string): OperationIntent {
-    const row = this.database.prepare("SELECT * FROM operation_intents WHERE operation_id = ?").get(operationId) as
-      | SqlRow
-      | undefined;
+    const row = this.findRow("operation_intents", operationId);
     if (row === undefined) {
       fail("not_found", `Operation Intent not found: ${operationId}`);
     }
@@ -314,9 +313,7 @@ export class SqliteToolGateway {
   }
 
   getResult(operationId: string): OperationResult | undefined {
-    const row = this.database.prepare("SELECT * FROM operation_results WHERE operation_id = ?").get(operationId) as
-      | SqlRow
-      | undefined;
+    const row = this.findRow("operation_results", operationId);
     return row === undefined ? undefined : resultFromRow(row);
   }
 
@@ -326,9 +323,7 @@ export class SqliteToolGateway {
       .all(operationId) as SqlRow[]).map((row) => ({
       transitionId: asText(row, "transition_id"),
       operationId: asText(row, "operation_id"),
-      ...(optionalText(row, "from_status") === undefined
-        ? {}
-        : { fromStatus: optionalText(row, "from_status") as ToolOperationStatus }),
+      ...optionalField("fromStatus", optionalText(row, "from_status") as ToolOperationStatus | undefined),
       toStatus: asText(row, "to_status") as ToolOperationStatus,
       ...(row.from_version === null ? {} : { fromVersion: asNumber(row, "from_version") }),
       toVersion: asNumber(row, "to_version"),
@@ -357,7 +352,7 @@ export class SqliteToolGateway {
       if (existing.requestDigest !== requestDigest) {
         fail("idempotency_conflict", `Tool call was reused with different input: ${request.callId}`);
       }
-      if (["denied", "failed", "succeeded"].includes(existing.status)) {
+      if (isTerminal(existing.status)) {
         return this.outcome(existing);
       }
       if (existing.status === "authorized") {
@@ -449,77 +444,76 @@ export class SqliteToolGateway {
     });
     const errorCode = status === "denied" ? input.reasonCodes[0] ?? "policy_denied" : undefined;
     const sanitizedError = status === "denied" ? input.sanitizedError ?? "Tool request was denied" : undefined;
-    this.database.exec("BEGIN IMMEDIATE");
     try {
-      this.database
-        .prepare(`
-          INSERT INTO operations (
-            operation_id, version, status, idempotency_key, request_digest, run_id, role_run_id,
-            lease_token, call_id, tool_name, tool_version, definition_digest, policy_ref_json,
-            error_code, sanitized_error, created_at, updated_at, terminal_at
-          ) VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `)
-        .run(
-          operationId,
-          status,
-          input.idempotencyKey,
-          input.requestDigest,
-          input.request.runId,
-          input.request.roleRunId,
-          input.request.leaseToken,
-          input.request.callId,
-          input.request.tool.name,
-          input.request.tool.version,
-          input.request.tool.definitionDigest,
-          canonicalizeJson(input.request.tool.policyRef),
-          errorCode ?? null,
-          sanitizedError ?? null,
-          now,
-          now,
-          status === "denied" ? now : null,
-        );
-      this.database
-        .prepare(`
-          INSERT INTO policy_decisions (
-            decision_id, operation_id, outcome, reason_codes_json, authority_digest, policy_ref_json, decided_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?)
-        `)
-        .run(
-          decisionId,
-          operationId,
-          input.decisionOutcome,
-          canonicalizeJson([...input.reasonCodes]),
-          authorityDigest,
-          canonicalizeJson(input.request.tool.policyRef),
-          now,
-        );
-      if (intentId !== undefined && input.authority !== undefined && input.normalizedInput !== undefined && input.allowedPath !== undefined) {
-        const inputJson = canonicalizeJson(input.normalizedInput);
+      this.inTransaction(() => {
         this.database
           .prepare(`
-            INSERT INTO operation_intents (
-              intent_id, operation_id, schema_version, tool_name, tool_version, input_json, input_digest,
-              repository_id, base_commit, allowed_path, isolation_profile_json, created_at
-            ) VALUES (?, ?, '1', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO operations (
+              operation_id, version, status, idempotency_key, request_digest, run_id, role_run_id,
+              lease_token, call_id, tool_name, tool_version, definition_digest, policy_ref_json,
+              error_code, sanitized_error, created_at, updated_at, terminal_at
+            ) VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `)
           .run(
-            intentId,
             operationId,
+            status,
+            input.idempotencyKey,
+            input.requestDigest,
+            input.request.runId,
+            input.request.roleRunId,
+            input.request.leaseToken,
+            input.request.callId,
             input.request.tool.name,
             input.request.tool.version,
-            inputJson,
-            digestJson(input.normalizedInput),
-            input.authority.repositoryId,
-            input.authority.baseCommit,
-            input.allowedPath,
-            canonicalizeJson(input.authority.isolationProfile),
+            input.request.tool.definitionDigest,
+            canonicalizeJson(input.request.tool.policyRef),
+            errorCode ?? null,
+            sanitizedError ?? null,
+            now,
+            now,
+            status === "denied" ? now : null,
+          );
+        this.database
+          .prepare(`
+            INSERT INTO policy_decisions (
+              decision_id, operation_id, outcome, reason_codes_json, authority_digest, policy_ref_json, decided_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+          `)
+          .run(
+            decisionId,
+            operationId,
+            input.decisionOutcome,
+            canonicalizeJson([...input.reasonCodes]),
+            authorityDigest,
+            canonicalizeJson(input.request.tool.policyRef),
             now,
           );
-      }
-      this.insertTransition(operationId, undefined, status, undefined, 1, status === "denied" ? "request_denied" : "intent_authorized", now);
-      this.database.exec("COMMIT");
+        if (intentId !== undefined && input.authority !== undefined && input.normalizedInput !== undefined && input.allowedPath !== undefined) {
+          const inputJson = canonicalizeJson(input.normalizedInput);
+          this.database
+            .prepare(`
+              INSERT INTO operation_intents (
+                intent_id, operation_id, schema_version, tool_name, tool_version, input_json, input_digest,
+                repository_id, base_commit, allowed_path, isolation_profile_json, created_at
+              ) VALUES (?, ?, '1', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `)
+            .run(
+              intentId,
+              operationId,
+              input.request.tool.name,
+              input.request.tool.version,
+              inputJson,
+              digestJson(input.normalizedInput),
+              input.authority.repositoryId,
+              input.authority.baseCommit,
+              input.allowedPath,
+              canonicalizeJson(input.authority.isolationProfile),
+              now,
+            );
+        }
+        this.insertTransition(operationId, undefined, status, undefined, 1, status === "denied" ? "request_denied" : "intent_authorized", now);
+      });
     } catch (error) {
-      this.database.exec("ROLLBACK");
       const existing = this.findByIdempotencyKey(input.idempotencyKey);
       if (existing !== undefined) {
         if (existing.requestDigest !== input.requestDigest) {
@@ -627,7 +621,7 @@ export class SqliteToolGateway {
 
   private async reconcileSerialized(operation: ToolOperation): Promise<ToolInvocationOutcome> {
     const current = this.getOperation(operation.operationId);
-    if (["denied", "failed", "succeeded"].includes(current.status)) {
+    if (isTerminal(current.status)) {
       return this.outcome(current);
     }
     if (current.status === "authorized") {
@@ -716,46 +710,45 @@ export class SqliteToolGateway {
     const resultId = this.ids.next("result");
     const outputJson = canonicalizeJson(execution.output);
     const evidenceRefs = [...new Set(execution.evidenceRefs)].sort();
-    this.database.exec("BEGIN IMMEDIATE");
     try {
-      this.database
-        .prepare(`
-          INSERT INTO operation_results (
-            result_id, operation_id, outcome, source, output_json, output_digest,
-            evidence_refs_json, error_code, sanitized_error, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `)
-        .run(
-          resultId,
-          operation.operationId,
-          execution.outcome,
-          source,
-          outputJson,
-          digestJson(execution.output),
-          canonicalizeJson(evidenceRefs),
-          execution.errorCode ?? null,
-          execution.sanitizedError ?? null,
+      this.inTransaction(() => {
+        this.database
+          .prepare(`
+            INSERT INTO operation_results (
+              result_id, operation_id, outcome, source, output_json, output_digest,
+              evidence_refs_json, error_code, sanitized_error, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `)
+          .run(
+            resultId,
+            operation.operationId,
+            execution.outcome,
+            source,
+            outputJson,
+            digestJson(execution.output),
+            canonicalizeJson(evidenceRefs),
+            execution.errorCode ?? null,
+            execution.sanitizedError ?? null,
+            now,
+          );
+        this.updateOperation(
+          operation,
+          status,
+          execution.outcome === "failed" ? execution.errorCode : undefined,
+          execution.outcome === "failed" ? execution.sanitizedError : undefined,
           now,
         );
-      this.updateOperation(
-        operation,
-        status,
-        execution.outcome === "failed" ? execution.errorCode : undefined,
-        execution.outcome === "failed" ? execution.sanitizedError : undefined,
-        now,
-      );
-      this.insertTransition(
-        operation.operationId,
-        operation.status,
-        status,
-        operation.version,
-        operation.version + 1,
-        source === "reconciliation" ? `reconciled_${status}` : `execution_${status}`,
-        now,
-      );
-      this.database.exec("COMMIT");
+        this.insertTransition(
+          operation.operationId,
+          operation.status,
+          status,
+          operation.version,
+          operation.version + 1,
+          source === "reconciliation" ? `reconciled_${status}` : `execution_${status}`,
+          now,
+        );
+      });
     } catch (error) {
-      this.database.exec("ROLLBACK");
       const current = this.getOperation(operation.operationId);
       if (["failed", "succeeded"].includes(current.status)) {
         return this.outcome(current);
@@ -773,8 +766,7 @@ export class SqliteToolGateway {
     sanitizedError?: string,
   ): ToolOperation {
     const now = this.clock.now();
-    this.database.exec("BEGIN IMMEDIATE");
-    try {
+    this.inTransaction(() => {
       this.updateOperation(operation, status, errorCode, sanitizedError, now);
       this.insertTransition(
         operation.operationId,
@@ -785,11 +777,7 @@ export class SqliteToolGateway {
         reasonCode,
         now,
       );
-      this.database.exec("COMMIT");
-    } catch (error) {
-      this.database.exec("ROLLBACK");
-      throw error;
-    }
+    });
     return this.getOperation(operation.operationId);
   }
 
@@ -800,7 +788,7 @@ export class SqliteToolGateway {
     sanitizedError: string | undefined,
     now: string,
   ): void {
-    const terminalAt = ["denied", "failed", "succeeded"].includes(status) ? now : null;
+    const terminalAt = isTerminal(status) ? now : null;
     const result = this.database
       .prepare(`
         UPDATE operations
@@ -848,6 +836,21 @@ export class SqliteToolGateway {
         reasonCode,
         occurredAt,
       );
+  }
+
+  private findRow(table: "operations" | "operation_intents" | "operation_results" | "policy_decisions", operationId: string): SqlRow | undefined {
+    return this.database.prepare(`SELECT * FROM ${table} WHERE operation_id = ?`).get(operationId) as SqlRow | undefined;
+  }
+
+  private inTransaction(action: () => void): void {
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      action();
+      this.database.exec("COMMIT");
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   private outcome(operation: ToolOperation): ToolInvocationOutcome {
