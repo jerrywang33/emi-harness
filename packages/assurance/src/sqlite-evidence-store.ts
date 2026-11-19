@@ -1,15 +1,11 @@
-import { chmodSync, existsSync } from "node:fs";
-import { DatabaseSync } from "node:sqlite";
+import type { DatabaseSync } from "node:sqlite";
 
 import { canonicalizeJson, cleanRef, compareRefs, digestJson, isSha256, refKey, sha256Text } from "@emi-harness/canonical-json";
+import { asText, openLedgerDatabase, optionalText, type SqlRow } from "@emi-harness/sqlite-ledger";
 
 import { fail } from "./errors.js";
-import { applyMigrations } from "./migrations.js";
+import { EVIDENCE_STORE_MIGRATIONS } from "./migrations.js";
 import type { Clock, EvidenceRecord, EvidenceRecordInput, VersionedRef } from "./types.js";
-
-interface SqlRow {
-  [key: string]: null | number | bigint | string | Uint8Array;
-}
 
 export interface SqliteEvidenceStoreConfig {
   databasePath: string;
@@ -18,17 +14,6 @@ export interface SqliteEvidenceStoreConfig {
 
 const systemClock: Clock = { now: () => new Date().toISOString() };
 const ID = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,159}$/u;
-
-function asText(row: SqlRow, key: string): string {
-  const value = row[key];
-  if (typeof value !== "string") throw new Error(`Expected text column: ${key}`);
-  return value;
-}
-
-function optionalText(row: SqlRow, key: string): string | undefined {
-  const value = row[key];
-  return value === null || value === undefined ? undefined : asText(row, key);
-}
 
 function normalizeRefs(refs: readonly VersionedRef[]): VersionedRef[] {
   const result = refs.map((ref) => {
@@ -109,17 +94,11 @@ export class SqliteEvidenceStore {
   constructor(config: SqliteEvidenceStoreConfig) {
     if (config.databasePath.trim().length === 0) fail("invalid_input", "databasePath must not be empty");
     this.clock = config.clock ?? systemClock;
-    const existed = config.databasePath !== ":memory:" && existsSync(config.databasePath);
-    this.database = new DatabaseSync(config.databasePath, {
-      allowExtension: false,
-      defensive: true,
-      enableDoubleQuotedStringLiterals: false,
-      enableForeignKeyConstraints: true,
-      timeout: 5_000,
+    this.database = openLedgerDatabase({
+      databasePath: config.databasePath,
+      migrations: EVIDENCE_STORE_MIGRATIONS,
+      now: () => this.clock.now(),
     });
-    this.database.exec("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL; PRAGMA busy_timeout = 5000;");
-    applyMigrations(this.database, () => this.clock.now());
-    if (config.databasePath !== ":memory:" && !existed) chmodSync(config.databasePath, 0o600);
   }
 
   close(): void {

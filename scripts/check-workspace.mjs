@@ -151,6 +151,11 @@ const requiredPackageFiles = {
     "test/evidence-store.integration.test.ts",
     "test/node-check-runner.integration.test.ts",
   ],
+  "packages/sqlite-ledger": [
+    "src/database.ts",
+    "src/rows.ts",
+    "test/ledger-database.integration.test.ts",
+  ],
   "packages/integration": [
     "src/candidate-evidence-package.ts",
     "src/gateway-runtime-tool.ts",

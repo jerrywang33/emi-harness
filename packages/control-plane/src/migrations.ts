@@ -1,13 +1,6 @@
-import type { DatabaseSync } from "node:sqlite";
+import type { LedgerMigration } from "@emi-harness/sqlite-ledger";
 
-import { sha256Text } from "@emi-harness/canonical-json";
-
-interface Migration {
-  id: string;
-  sql: string;
-}
-
-const MIGRATIONS: readonly Migration[] = [
+export const CONTROL_PLANE_MIGRATIONS: readonly LedgerMigration[] = [
   {
     id: "0001_control_plane_v1",
     sql: `
@@ -311,41 +304,3 @@ END;
 `,
   },
 ];
-
-export function applyMigrations(database: DatabaseSync, now: () => string): void {
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS schema_migrations (
-      migration_id TEXT PRIMARY KEY,
-      digest TEXT NOT NULL,
-      applied_at TEXT NOT NULL
-    ) STRICT;
-  `);
-
-  const findMigration = database.prepare(
-    "SELECT digest FROM schema_migrations WHERE migration_id = ?",
-  );
-  const recordMigration = database.prepare(
-    "INSERT INTO schema_migrations (migration_id, digest, applied_at) VALUES (?, ?, ?)",
-  );
-
-  for (const migration of MIGRATIONS) {
-    const digest = sha256Text(migration.sql);
-    const existing = findMigration.get(migration.id) as { digest: string } | undefined;
-    if (existing !== undefined) {
-      if (existing.digest !== digest) {
-        throw new Error(`Applied migration digest mismatch: ${migration.id}`);
-      }
-      continue;
-    }
-
-    database.exec("BEGIN IMMEDIATE");
-    try {
-      database.exec(migration.sql);
-      recordMigration.run(migration.id, digest, now());
-      database.exec("COMMIT");
-    } catch (error) {
-      database.exec("ROLLBACK");
-      throw error;
-    }
-  }
-}

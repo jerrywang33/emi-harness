@@ -27,11 +27,13 @@ v0.1 的设计是供真实项目验证的受控基线，不以一次性覆盖所
 
 v0.1 第 1 至第 8 步工程建设已经完成。当前在独立 review 后逐项讨论修复，再选取一个真实、低风险且边界清楚的 EMI 研发任务，由用户和相应责任人确认 PRD、司法辖区、适用 Context 与验收标准后进行校准；Harness 不代替用户作出业务、法律或最终验收结论。
 
-### 进行中：提取规范 JSON 与 SQLite 账本基础包 - 2026-11-19
+### 已完成重构：提取规范 JSON 与 SQLite 账本基础包 - 2026-11-19
 
 - 按 [ADR 0004](../docs/decisions/0004-extract-canonical-json-and-sqlite-ledger.md) 新增 `@emi-harness/canonical-json` 与 `@emi-harness/sqlite-ledger`，替换 Control Plane、Tool Gateway、Evidence Store 和 Resource Registry 中各自复制的规范 JSON、摘要、SQLite 连接、迁移、事务和行读取实现。
 - 不改变规范 JSON 字节、摘要、迁移 ID 与 SQL、数据库 Schema 或各包公开导出；已有 SQLite 文件、固定工具摘要和 v0.1 历史证据保持有效。
 - 本项不调整 Control Plane 分层、跨包端口或业务行为；这些设计缺口另行讨论。
+- 统一后的行为差异只有两处：迁移、Gateway 与 Evidence Store 事务在回滚本身失败时保留原始错误；数据库初始化失败时先关闭连接。
+- 验证：Node.js `v24.22.3`、pnpm `11.7.0` 下清空构建产物后执行 `pnpm check`，8 个包 25 个测试文件、101 个测试、类型检查、构建和 Runtime 公共声明检查通过。固定的工具、策略、隔离 profile、提交工具和资源摘要保持不变。另用重构前提交 `062d490` 的构建产物创建三个账本，再由重构后代码重开：迁移摘要校验通过，Task、Transition、Command 重放和 Evidence 摘要一致。未调用真实模型。
 
 ### 已确认修复：Executor 结算覆盖 Gateway 账本中的全部 Operation - 2026-11-19
 

@@ -1,11 +1,20 @@
 import { randomUUID } from "node:crypto";
-import { chmodSync, existsSync } from "node:fs";
-import { DatabaseSync } from "node:sqlite";
+import type { DatabaseSync } from "node:sqlite";
 
 import { canonicalizeJson, digestJson, isSha256, sameRef } from "@emi-harness/canonical-json";
+import {
+  asNumber,
+  asText,
+  inTransaction,
+  openLedgerDatabase,
+  optionalField,
+  optionalText,
+  parseJson,
+  type SqlRow,
+} from "@emi-harness/sqlite-ledger";
 
 import { ToolGatewayError, fail } from "./errors.js";
-import { applyMigrations } from "./migrations.js";
+import { TOOL_GATEWAY_MIGRATIONS } from "./migrations.js";
 import type {
   Clock,
   IdGenerator,
@@ -27,10 +36,6 @@ import type {
   ToolPolicyPort,
   VersionedRef,
 } from "./types.js";
-
-interface SqlRow {
-  [key: string]: null | number | bigint | string | Uint8Array;
-}
 
 export interface ToolRegistration {
   definition: ToolDefinitionV1;
@@ -54,39 +59,10 @@ interface ActiveInvocation {
 const systemClock: Clock = { now: () => new Date().toISOString() };
 const randomIds: IdGenerator = { next: (prefix) => `${prefix}_${randomUUID()}` };
 
-function asText(row: SqlRow, key: string): string {
-  const value = row[key];
-  if (typeof value !== "string") {
-    throw new Error(`Expected text column: ${key}`);
-  }
-  return value;
-}
-
-function asNumber(row: SqlRow, key: string): number {
-  const value = row[key];
-  if (typeof value !== "number") {
-    throw new Error(`Expected numeric column: ${key}`);
-  }
-  return value;
-}
-
-function optionalText(row: SqlRow, key: string): string | undefined {
-  const value = row[key];
-  return value === null || value === undefined ? undefined : asText(row, key);
-}
-
-function optionalField<K extends string, V>(key: K, value: V | undefined): { [P in K]?: V } {
-  return (value === undefined ? {} : { [key]: value }) as { [P in K]?: V };
-}
-
 const TERMINAL_STATUSES: readonly ToolOperationStatus[] = ["denied", "failed", "succeeded"];
 
 function isTerminal(status: ToolOperationStatus): boolean {
   return TERMINAL_STATUSES.includes(status);
-}
-
-function parseJson<T>(value: string): T {
-  return JSON.parse(value) as T;
 }
 
 function requireText(label: string, value: string): void {
@@ -222,19 +198,11 @@ export class SqliteToolGateway {
     this.executor = config.executor;
     this.clock = config.clock ?? systemClock;
     this.ids = config.idGenerator ?? randomIds;
-    const existed = config.databasePath !== ":memory:" && existsSync(config.databasePath);
-    this.database = new DatabaseSync(config.databasePath, {
-      allowExtension: false,
-      defensive: true,
-      enableDoubleQuotedStringLiterals: false,
-      enableForeignKeyConstraints: true,
-      timeout: 5_000,
+    this.database = openLedgerDatabase({
+      databasePath: config.databasePath,
+      migrations: TOOL_GATEWAY_MIGRATIONS,
+      now: () => this.clock.now(),
     });
-    this.database.exec("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL; PRAGMA busy_timeout = 5000;");
-    applyMigrations(this.database, () => this.clock.now());
-    if (config.databasePath !== ":memory:" && !existed) {
-      chmodSync(config.databasePath, 0o600);
-    }
   }
 
   close(): void {
@@ -442,7 +410,7 @@ export class SqliteToolGateway {
     const errorCode = status === "denied" ? input.reasonCodes[0] ?? "policy_denied" : undefined;
     const sanitizedError = status === "denied" ? input.sanitizedError ?? "Tool request was denied" : undefined;
     try {
-      this.inTransaction(() => {
+      inTransaction(this.database, () => {
         this.database
           .prepare(`
             INSERT INTO operations (
@@ -708,7 +676,7 @@ export class SqliteToolGateway {
     const outputJson = canonicalizeJson(execution.output);
     const evidenceRefs = [...new Set(execution.evidenceRefs)].sort();
     try {
-      this.inTransaction(() => {
+      inTransaction(this.database, () => {
         this.database
           .prepare(`
             INSERT INTO operation_results (
@@ -763,7 +731,7 @@ export class SqliteToolGateway {
     sanitizedError?: string,
   ): ToolOperation {
     const now = this.clock.now();
-    this.inTransaction(() => {
+    inTransaction(this.database, () => {
       this.updateOperation(operation, status, errorCode, sanitizedError, now);
       this.insertTransition(
         operation.operationId,
@@ -837,17 +805,6 @@ export class SqliteToolGateway {
 
   private findRow(table: "operations" | "operation_intents" | "operation_results" | "policy_decisions", operationId: string): SqlRow | undefined {
     return this.database.prepare(`SELECT * FROM ${table} WHERE operation_id = ?`).get(operationId) as SqlRow | undefined;
-  }
-
-  private inTransaction(action: () => void): void {
-    this.database.exec("BEGIN IMMEDIATE");
-    try {
-      action();
-      this.database.exec("COMMIT");
-    } catch (error) {
-      this.database.exec("ROLLBACK");
-      throw error;
-    }
   }
 
   private outcome(operation: ToolOperation): ToolInvocationOutcome {

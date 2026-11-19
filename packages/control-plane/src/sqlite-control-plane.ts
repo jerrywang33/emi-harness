@@ -1,8 +1,18 @@
-import { chmodSync, existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { DatabaseSync } from "node:sqlite";
+import type { DatabaseSync } from "node:sqlite";
 
 import { canonicalizeJson, cleanRef, digestJson, sameRef, sha256Text } from "@emi-harness/canonical-json";
+import {
+  asNumber,
+  asText,
+  inTransaction,
+  openLedgerDatabase,
+  optionalField,
+  optionalNumber,
+  optionalText,
+  parseJson,
+  type SqlRow,
+} from "@emi-harness/sqlite-ledger";
 
 import type {
   AcceptDeliveryCommand,
@@ -28,19 +38,13 @@ import type {
   SubmitVerificationResultCommand,
 } from "./contracts.js";
 import { ControlPlaneError, fail } from "./errors.js";
-import { applyMigrations } from "./migrations.js";
+import { CONTROL_PLANE_MIGRATIONS } from "./migrations.js";
 import { normalizeRunManifest } from "./run-manifest.js";
 import {
   approvalDecisionFromRow,
   approvalFromRow,
   approvalRef,
   artifactFromRow,
-  asNumber,
-  asText,
-  optionalField,
-  optionalNumber,
-  optionalText,
-  parseJson,
   requirePositiveInteger,
   requireText,
   roleRunFromRow,
@@ -48,7 +52,6 @@ import {
   taskFromRow,
   uniqueSorted,
   validateActor,
-  type SqlRow,
 } from "./rows.js";
 import type {
   Actor,
@@ -189,19 +192,11 @@ export class SqliteControlPlane {
     requireText("databasePath", config.databasePath);
     this.clock = config.clock ?? systemClock;
     this.ids = config.idGenerator ?? randomIds;
-    const existed = config.databasePath !== ":memory:" && existsSync(config.databasePath);
-    this.database = new DatabaseSync(config.databasePath, {
-      allowExtension: false,
-      defensive: true,
-      enableDoubleQuotedStringLiterals: false,
-      enableForeignKeyConstraints: true,
-      timeout: 5_000,
+    this.database = openLedgerDatabase({
+      databasePath: config.databasePath,
+      migrations: CONTROL_PLANE_MIGRATIONS,
+      now: () => this.clock.now(),
     });
-    this.database.exec("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL; PRAGMA busy_timeout = 5000;");
-    applyMigrations(this.database, () => this.clock.now());
-    if (config.databasePath !== ":memory:" && !existed) {
-      chmodSync(config.databasePath, 0o600);
-    }
   }
 
   close(): void {
@@ -1027,8 +1022,7 @@ export class SqliteControlPlane {
     requireText("commandId", request.commandId);
     validateActor(request.actor);
     const requestDigest = digestJson({ commandType, request });
-    this.database.exec("BEGIN IMMEDIATE");
-    try {
+    return inTransaction(this.database, () => {
       const existing = this.database
         .prepare("SELECT request_digest, result_json FROM commands WHERE command_id = ?")
         .get(request.commandId) as SqlRow | undefined;
@@ -1036,9 +1030,7 @@ export class SqliteControlPlane {
         if (asText(existing, "request_digest") !== requestDigest) {
           fail("command_conflict", `Command ID was already used with different input: ${request.commandId}`);
         }
-        const result = parseJson<T>(asText(existing, "result_json"));
-        this.database.exec("COMMIT");
-        return result;
+        return parseJson<T>(asText(existing, "result_json"));
       }
 
       const result = action();
@@ -1046,16 +1038,8 @@ export class SqliteControlPlane {
       this.database
         .prepare("INSERT INTO commands (command_id, command_type, request_digest, result_json, completed_at) VALUES (?, ?, ?, ?, ?)")
         .run(request.commandId, commandType, requestDigest, resultJson, this.clock.now());
-      this.database.exec("COMMIT");
       return result;
-    } catch (error) {
-      try {
-        this.database.exec("ROLLBACK");
-      } catch {
-        // The original error is more useful when SQLite already rolled back the transaction.
-      }
-      throw error;
-    }
+    });
   }
 
 

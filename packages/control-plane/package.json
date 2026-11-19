@@ -17,6 +17,7 @@
     "check": "pnpm run typecheck && pnpm run test && pnpm run build"
   },
   "dependencies": {
-    "@emi-harness/canonical-json": "workspace:*"
+    "@emi-harness/canonical-json": "workspace:*",
+    "@emi-harness/sqlite-ledger": "workspace:*"
   }
 }
