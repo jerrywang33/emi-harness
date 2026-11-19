@@ -100,110 +100,67 @@ if (await exists(packagesPath)) {
 }
 
 const runtimePiRoot = join(root, "packages/runtime-pi");
-for (const path of [
-  "README.md",
-  "package.json",
-  "src/controlled-pi-session-factory.ts",
-  "src/index.ts",
-  "src/testing/deterministic-pi-runtime-adapter.ts",
-  "src/testing/index.ts",
-  "test/deterministic-pi-runtime-adapter.test.ts",
-  "test/pi-sdk.contract.test.ts",
-  "tsconfig.build.json",
-  "tsconfig.json",
-]) {
-  await requirePath(join(runtimePiRoot, path));
+const packageBaselineFiles = ["README.md", "package.json", "src/index.ts", "tsconfig.build.json", "tsconfig.json"];
+const requiredPackageFiles = {
+  "packages/runtime-pi": [
+    "src/controlled-pi-session-factory.ts",
+    "src/testing/deterministic-pi-runtime-adapter.ts",
+    "src/testing/index.ts",
+    "test/deterministic-pi-runtime-adapter.test.ts",
+    "test/pi-sdk.contract.test.ts",
+  ],
+  "packages/control-plane": [
+    "src/migrations.ts",
+    "src/sqlite-control-plane.ts",
+    "test/lifecycle.integration.test.ts",
+    "test/recovery.integration.test.ts",
+  ],
+  "packages/resource-registry": [
+    "resources/contexts/emi.safeguarding.payment-funds/context.md",
+    "resources/contexts/emi.safeguarding.payment-funds/manifest.json",
+    "resources/registry.json",
+    "resources/skills/emi.skill.control-to-trd/SKILL.md",
+    "resources/skills/emi.skill.control-to-trd/manifest.json",
+    "schemas/resource-manifest.schema.json",
+    "test/registry.integration.test.ts",
+    "test/security.integration.test.ts",
+  ],
+  "packages/tool-gateway": [
+    "src/control-plane-authority.ts",
+    "src/definitions.ts",
+    "src/migrations.ts",
+    "src/sqlite-tool-gateway.ts",
+    "src/subprocess-workspace-executor.ts",
+    "src/workspace-write-policy.ts",
+    "test/gateway.integration.test.ts",
+    "test/recovery.integration.test.ts",
+    "worker/workspace-worker.mjs",
+  ],
+  "packages/assurance": [
+    "src/assurance-service.ts",
+    "src/migrations.ts",
+    "src/node-check-runner.ts",
+    "src/sqlite-evidence-store.ts",
+    "test/assurance-service.test.ts",
+    "test/evidence-store.integration.test.ts",
+    "test/node-check-runner.integration.test.ts",
+  ],
+  "packages/integration": [
+    "src/candidate-evidence-package.ts",
+    "src/gateway-runtime-tool.ts",
+    "src/role-execution-coordinator.ts",
+    "src/submission-tools.ts",
+    "test/pi-target.e2e.test.ts",
+    "test/role-execution.integration.test.ts",
+    "test/submission-tools.test.ts",
+  ],
+};
+for (const [packageRoot, files] of Object.entries(requiredPackageFiles)) {
+  for (const path of [...packageBaselineFiles, ...files]) {
+    await requirePath(join(root, packageRoot, path));
+  }
 }
 
-const controlPlaneRoot = join(root, "packages/control-plane");
-for (const path of [
-  "README.md",
-  "package.json",
-  "src/index.ts",
-  "src/migrations.ts",
-  "src/sqlite-control-plane.ts",
-  "test/lifecycle.integration.test.ts",
-  "test/recovery.integration.test.ts",
-  "tsconfig.build.json",
-  "tsconfig.json",
-]) {
-  await requirePath(join(controlPlaneRoot, path));
-}
-
-const resourceRegistryRoot = join(root, "packages/resource-registry");
-for (const path of [
-  "README.md",
-  "package.json",
-  "resources/contexts/emi.safeguarding.payment-funds/context.md",
-  "resources/contexts/emi.safeguarding.payment-funds/manifest.json",
-  "resources/registry.json",
-  "resources/skills/emi.skill.control-to-trd/SKILL.md",
-  "resources/skills/emi.skill.control-to-trd/manifest.json",
-  "schemas/resource-manifest.schema.json",
-  "src/index.ts",
-  "test/registry.integration.test.ts",
-  "test/security.integration.test.ts",
-  "tsconfig.build.json",
-  "tsconfig.json",
-]) {
-  await requirePath(join(resourceRegistryRoot, path));
-}
-
-const toolGatewayRoot = join(root, "packages/tool-gateway");
-for (const path of [
-  "README.md",
-  "package.json",
-  "src/control-plane-authority.ts",
-  "src/definitions.ts",
-  "src/index.ts",
-  "src/migrations.ts",
-  "src/sqlite-tool-gateway.ts",
-  "src/subprocess-workspace-executor.ts",
-  "src/workspace-write-policy.ts",
-  "test/gateway.integration.test.ts",
-  "test/recovery.integration.test.ts",
-  "tsconfig.build.json",
-  "tsconfig.json",
-  "worker/workspace-worker.mjs",
-]) {
-  await requirePath(join(toolGatewayRoot, path));
-}
-
-const assuranceRoot = join(root, "packages/assurance");
-for (const path of [
-  "README.md",
-  "package.json",
-  "src/assurance-service.ts",
-  "src/index.ts",
-  "src/migrations.ts",
-  "src/node-check-runner.ts",
-  "src/sqlite-evidence-store.ts",
-  "test/assurance-service.test.ts",
-  "test/evidence-store.integration.test.ts",
-  "test/node-check-runner.integration.test.ts",
-  "tsconfig.build.json",
-  "tsconfig.json",
-]) {
-  await requirePath(join(assuranceRoot, path));
-}
-
-const integrationRoot = join(root, "packages/integration");
-for (const path of [
-  "README.md",
-  "package.json",
-  "src/candidate-evidence-package.ts",
-  "src/gateway-runtime-tool.ts",
-  "src/index.ts",
-  "src/role-execution-coordinator.ts",
-  "src/submission-tools.ts",
-  "test/pi-target.e2e.test.ts",
-  "test/role-execution.integration.test.ts",
-  "test/submission-tools.test.ts",
-  "tsconfig.build.json",
-  "tsconfig.json",
-]) {
-  await requirePath(join(integrationRoot, path));
-}
 if (await exists(join(runtimePiRoot, "package.json"))) {
   const runtimePiPackage = JSON.parse(await readFile(join(runtimePiRoot, "package.json"), "utf8"));
   for (const piPackage of [
