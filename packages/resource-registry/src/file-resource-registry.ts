@@ -2,7 +2,7 @@ import { readFile, realpath } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { sha256Text } from "./digest.js";
+import { sha256Text } from "@emi-harness/canonical-json";
 import { fail } from "./errors.js";
 import type {
   ControlledResourceProjection,

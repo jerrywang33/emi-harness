@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 
-import { sha256Text } from "./canonical-json.js";
+import { sha256Text } from "@emi-harness/canonical-json";
 
 const MIGRATIONS = [
   {

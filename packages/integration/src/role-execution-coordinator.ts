@@ -5,17 +5,8 @@ import {
   type EvidenceStorePort,
   formatEvidenceRef,
 } from "@emi-harness/assurance";
-import {
-  canonicalizeJson,
-  digestJson,
-  type Actor,
-  type JsonValue,
-  type RolePlan,
-  type RoleRun,
-  type RunManifestV1,
-  type SqliteControlPlane,
-  type VersionedRef,
-} from "@emi-harness/control-plane";
+import { digestJson, sameRef, toJsonValue, type JsonValue, type VersionedRef } from "@emi-harness/canonical-json";
+import type { Actor, RolePlan, RoleRun, RunManifestV1, SqliteControlPlane } from "@emi-harness/control-plane";
 import type { FileResourceRegistry } from "@emi-harness/resource-registry";
 import type {
   PiRuntimePort,
@@ -97,18 +88,6 @@ const THINKING_LEVELS = new Set<RuntimeThinkingLevel>([
   "xhigh",
   "max",
 ]);
-
-function toJson(value: unknown): JsonValue {
-  return JSON.parse(canonicalizeJson(value)) as JsonValue;
-}
-
-function refKey(ref: VersionedRef): string {
-  return `${ref.id}\u0000${ref.version}\u0000${ref.digest}`;
-}
-
-function sameRef(left: VersionedRef, right: VersionedRef): boolean {
-  return refKey(left) === refKey(right);
-}
 
 function exactStrings(left: readonly string[], right: readonly string[]): boolean {
   if (left.length !== right.length) return false;
@@ -271,14 +250,14 @@ export class RoleExecutionCoordinator {
       roleRunId: request.roleRunId,
       producer: { producerId: request.worker.actorId, producerType: "worker" },
       subjectRefs: [this.manifestRef(request.runId, started.manifestDigest)],
-      content: toJson(executionContent),
+      content: toJsonValue(executionContent),
     });
     const allEvidenceRefs = [...evidenceRefs, formatEvidenceRef(executionEvidence)];
     const artifactInput = {
       id: request.executionResultId,
       version: "1",
       kind: "execution_result",
-      content: toJson(executionContent),
+      content: toJsonValue(executionContent),
       digest: digestJson(executionContent),
       createdBy: request.worker.actorId,
     } as const;
@@ -428,7 +407,7 @@ export class RoleExecutionCoordinator {
       id: request.verificationResultId,
       version: "1",
       kind: "verification_result",
-      content: toJson(assured.content),
+      content: toJsonValue(assured.content),
       digest: digestJson(assured.content),
       createdBy: request.worker.actorId,
     } as const;
@@ -605,7 +584,7 @@ export class RoleExecutionCoordinator {
       roleRunId: request.roleRunId,
       producer: { producerId: "integration.runtime-recorder", producerType: "system" },
       subjectRefs: [this.manifestRef(request.runId, started.manifestDigest)],
-      content: toJson({
+      content: toJsonValue({
         schemaVersion: "1",
         role: started.rolePlan.role,
         sessionId: started.session.sessionId,
@@ -648,7 +627,7 @@ export class RoleExecutionCoordinator {
         roleRunId: request.roleRunId,
         producer: { producerId: "integration.gateway-snapshot", producerType: "system" },
         subjectRefs: [this.manifestRef(request.runId, started.manifestDigest)],
-        content: toJson(snapshot),
+        content: toJsonValue(snapshot),
       });
       evidenceRefs.push(formatEvidenceRef(evidence));
     }

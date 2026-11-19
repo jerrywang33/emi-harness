@@ -1,7 +1,8 @@
 import { chmodSync, existsSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 
-import { canonicalizeJson, digestJson, isSha256, sha256Text } from "./canonical-json.js";
+import { canonicalizeJson, cleanRef, compareRefs, digestJson, isSha256, refKey, sha256Text } from "@emi-harness/canonical-json";
+
 import { fail } from "./errors.js";
 import { applyMigrations } from "./migrations.js";
 import type { Clock, EvidenceRecord, EvidenceRecordInput, VersionedRef } from "./types.js";
@@ -34,13 +35,9 @@ function normalizeRefs(refs: readonly VersionedRef[]): VersionedRef[] {
     if (!ID.test(ref.id) || !ID.test(ref.version) || !isSha256(ref.digest)) {
       fail("invalid_input", `Invalid Evidence subject ref: ${ref.id}@${ref.version}`);
     }
-    return { id: ref.id, version: ref.version, digest: ref.digest };
-  }).sort((left, right) => {
-    const leftKey = `${left.id}\u0000${left.version}\u0000${left.digest}`;
-    const rightKey = `${right.id}\u0000${right.version}\u0000${right.digest}`;
-    return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
-  });
-  if (new Set(result.map((ref) => `${ref.id}\u0000${ref.version}\u0000${ref.digest}`)).size !== result.length) {
+    return cleanRef(ref);
+  }).sort(compareRefs);
+  if (new Set(result.map(refKey)).size !== result.length) {
     fail("invalid_input", "Evidence subject refs must not contain duplicates");
   }
   return result;

@@ -1,4 +1,4 @@
-import { digestJson } from "@emi-harness/control-plane";
+import { digestJson } from "@emi-harness/canonical-json";
 import type { JsonObject, RuntimeTool } from "@emi-harness/runtime-pi";
 import type { ToolPlanRef, VersionedRef } from "@emi-harness/tool-gateway";
 

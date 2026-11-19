@@ -1,4 +1,5 @@
-import { isSha256 } from "./digest.js";
+import { isSha256 } from "@emi-harness/canonical-json";
+
 import { fail } from "./errors.js";
 import type {
   ContextStatement,

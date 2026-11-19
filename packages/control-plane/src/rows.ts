@@ -1,4 +1,5 @@
-import { digestJson } from "./canonical-json.js";
+import { digestJson } from "@emi-harness/canonical-json";
+
 import { fail } from "./errors.js";
 import type {
   Actor,
@@ -81,14 +82,6 @@ export function uniqueSorted(values: readonly string[], label: string): string[]
 export function validateActor(actor: Actor): void {
   requireText("actorId", actor.actorId);
   uniqueSorted(actor.roles, "actor role");
-}
-
-export function sameRef(left: VersionedRef, right: VersionedRef): boolean {
-  return left.id === right.id && left.version === right.version && left.digest === right.digest;
-}
-
-export function cleanRef(ref: VersionedRef): VersionedRef {
-  return { id: ref.id, version: ref.version, digest: ref.digest };
 }
 
 export function approvalRef(approval: Approval): VersionedRef {

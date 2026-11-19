@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 
-import { sha256Digest } from "./canonical-json.js";
+import { sha256Text } from "@emi-harness/canonical-json";
 
 interface Migration {
   id: string;
@@ -329,7 +329,7 @@ export function applyMigrations(database: DatabaseSync, now: () => string): void
   );
 
   for (const migration of MIGRATIONS) {
-    const digest = sha256Digest(migration.sql);
+    const digest = sha256Text(migration.sql);
     const existing = findMigration.get(migration.id) as { digest: string } | undefined;
     if (existing !== undefined) {
       if (existing.digest !== digest) {

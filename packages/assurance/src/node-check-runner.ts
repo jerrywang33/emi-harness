@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { lstat, realpath } from "node:fs/promises";
 import { isAbsolute, resolve, sep } from "node:path";
 
-import { digestJson, isSha256 } from "./canonical-json.js";
+import { digestJson, isSha256 } from "@emi-harness/canonical-json";
 import { fail } from "./errors.js";
 import type { CheckDefinitionV1, CheckExecutionRequest, CheckObservation, CheckRunnerPort, Clock } from "./types.js";
 

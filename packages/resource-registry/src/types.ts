@@ -1,8 +1,6 @@
-export interface VersionedRef {
-  id: string;
-  version: string;
-  digest: string;
-}
+import type { VersionedRef } from "@emi-harness/canonical-json";
+
+export type { VersionedRef } from "@emi-harness/canonical-json";
 
 export type ResourceKind = "emi_context" | "prompt" | "skill";
 export type ResourceStatus = "active" | "draft" | "retired";

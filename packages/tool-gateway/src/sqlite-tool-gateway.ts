@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import { chmodSync, existsSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 
-import { canonicalizeJson, digestJson, isSha256 } from "./canonical-json.js";
+import { canonicalizeJson, digestJson, isSha256, sameRef } from "@emi-harness/canonical-json";
+
 import { ToolGatewayError, fail } from "./errors.js";
 import { applyMigrations } from "./migrations.js";
 import type {
@@ -92,10 +93,6 @@ function requireText(label: string, value: string): void {
   if (value.trim().length === 0) {
     fail("invalid_input", `${label} must not be empty`);
   }
-}
-
-function sameRef(left: VersionedRef, right: VersionedRef): boolean {
-  return left.id === right.id && left.version === right.version && left.digest === right.digest;
 }
 
 function registrationKey(name: string, version: string): string {

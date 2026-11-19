@@ -1,18 +1,14 @@
-import { isSha256 } from "./canonical-json.js";
+import { isSha256, sameRef } from "@emi-harness/canonical-json";
+
 import { LOCAL_WORKSPACE_ISOLATION_REF, WORKSPACE_WRITE_POLICY_REF } from "./definitions.js";
 import type {
   JsonObject,
   RoleRunAuthoritySnapshot,
   ToolPolicyEvaluation,
   ToolPolicyPort,
-  VersionedRef,
 } from "./types.js";
 
 const MAX_UTF8_BYTES = 128 * 1024;
-
-function sameRef(left: VersionedRef, right: VersionedRef): boolean {
-  return left.id === right.id && left.version === right.version && left.digest === right.digest;
-}
 
 function invalidPath(path: string): boolean {
   return (

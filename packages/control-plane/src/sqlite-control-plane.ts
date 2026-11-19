@@ -2,7 +2,8 @@ import { chmodSync, existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 
-import { canonicalizeJson, digestJson, normalizeRunManifest, sha256Digest } from "./canonical-json.js";
+import { canonicalizeJson, cleanRef, digestJson, sameRef, sha256Text } from "@emi-harness/canonical-json";
+
 import type {
   AcceptDeliveryCommand,
   AcquireRoleRunLeaseCommand,
@@ -28,6 +29,7 @@ import type {
 } from "./contracts.js";
 import { ControlPlaneError, fail } from "./errors.js";
 import { applyMigrations } from "./migrations.js";
+import { normalizeRunManifest } from "./run-manifest.js";
 import {
   approvalDecisionFromRow,
   approvalFromRow,
@@ -35,7 +37,6 @@ import {
   artifactFromRow,
   asNumber,
   asText,
-  cleanRef,
   optionalField,
   optionalNumber,
   optionalText,
@@ -44,7 +45,6 @@ import {
   requireText,
   roleRunFromRow,
   runFromRow,
-  sameRef,
   taskFromRow,
   uniqueSorted,
   validateActor,
@@ -223,7 +223,7 @@ export class SqliteControlPlane {
     if (artifact.digest !== ref.digest) {
       fail("digest_mismatch", `Artifact digest mismatch: ${ref.id}@${ref.version}`);
     }
-    if (sha256Digest(artifact.canonicalJson) !== artifact.digest) {
+    if (sha256Text(artifact.canonicalJson) !== artifact.digest) {
       fail("digest_mismatch", `Stored artifact content is corrupt: ${ref.id}@${ref.version}`);
     }
     return artifact;
@@ -353,7 +353,7 @@ export class SqliteControlPlane {
       const normalized = normalizeRunManifest(command.manifest);
       this.validateManifest(task, command.runId, normalized);
       const canonicalJson = canonicalizeJson(normalized);
-      const manifestDigest = sha256Digest(canonicalJson);
+      const manifestDigest = sha256Text(canonicalJson);
       const now = this.clock.now();
       const approval = this.insertApproval({
         approvalId: command.authorizationApprovalId,
@@ -416,7 +416,7 @@ export class SqliteControlPlane {
     }
     const canonicalJson = asText(row, "canonical_json");
     const digest = asText(row, "digest");
-    if (sha256Digest(canonicalJson) !== digest) {
+    if (sha256Text(canonicalJson) !== digest) {
       fail("digest_mismatch", `Stored RunManifest is corrupt: ${runId}`);
     }
     return { manifest: parseJson<RunManifestV1>(canonicalJson), canonicalJson, digest };
@@ -1068,7 +1068,7 @@ export class SqliteControlPlane {
       fail("invalid_input", `Expected ${expectedKind} artifact, received ${input.kind}`);
     }
     const canonicalJson = canonicalizeJson(input.content);
-    const digest = sha256Digest(canonicalJson);
+    const digest = sha256Text(canonicalJson);
     if (input.digest !== digest) {
       fail("digest_mismatch", `Artifact digest does not match content: ${input.id}@${input.version}`);
     }
@@ -1758,7 +1758,7 @@ export class SqliteControlPlane {
         fail("approval_invalid", `Run prerequisite Approval is no longer effective: ${ref.id}`);
       }
     }
-    if (manifest.runId !== run.runId || sha256Digest(canonicalizeJson(manifest)) !== run.manifestDigest) {
+    if (manifest.runId !== run.runId || sha256Text(canonicalizeJson(manifest)) !== run.manifestDigest) {
       fail("digest_mismatch", `RunManifest no longer matches Run: ${run.runId}`);
     }
   }

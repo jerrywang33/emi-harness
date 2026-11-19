@@ -5,13 +5,15 @@ import { resolve, sep } from "node:path";
 import { type SqliteEvidenceStore } from "@emi-harness/assurance";
 import {
   canonicalizeJson,
+  compareRefs,
   digestJson,
+  refKey,
+  sha256Text,
+  toJsonValue,
   type JsonObject,
-  type JsonValue,
-  type SqliteControlPlane,
   type VersionedRef,
-} from "@emi-harness/control-plane";
-import { sha256Text } from "@emi-harness/resource-registry";
+} from "@emi-harness/canonical-json";
+import type { SqliteControlPlane } from "@emi-harness/control-plane";
 import type { SqliteToolGateway } from "@emi-harness/tool-gateway";
 
 import { fail } from "./errors.js";
@@ -42,22 +44,10 @@ export interface CandidateEvidencePackageBuilderConfig {
   evidenceStore: SqliteEvidenceStore;
 }
 
-function toJson(value: unknown): JsonValue {
-  return JSON.parse(canonicalizeJson(value)) as JsonValue;
-}
-
-function refKey(ref: VersionedRef): string {
-  return `${ref.id}\u0000${ref.version}\u0000${ref.digest}`;
-}
-
 function uniqueRefs(refs: readonly VersionedRef[]): VersionedRef[] {
   const values = new Map<string, VersionedRef>();
   for (const ref of refs) values.set(refKey(ref), ref);
-  return [...values.values()].sort((left, right) => {
-    const leftKey = refKey(left);
-    const rightKey = refKey(right);
-    return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
-  });
+  return [...values.values()].sort(compareRefs);
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -212,7 +202,7 @@ export class CandidateEvidencePackageBuilder {
       }
     }
 
-    const content = toJson({
+    const content = toJsonValue({
       schemaVersion: "1",
       packageId: request.packageId,
       packageType: "candidate_delivery",

@@ -1,15 +1,6 @@
-export type JsonPrimitive = boolean | number | string | null;
-export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
+import type { JsonObject, JsonValue, VersionedRef } from "@emi-harness/canonical-json";
 
-export interface JsonObject {
-  [key: string]: JsonValue;
-}
-
-export interface VersionedRef {
-  id: string;
-  version: string;
-  digest: string;
-}
+export type { JsonObject, JsonPrimitive, JsonValue, VersionedRef } from "@emi-harness/canonical-json";
 
 export interface Clock {
   now(): string;

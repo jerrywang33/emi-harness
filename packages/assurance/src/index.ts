@@ -1,5 +1,5 @@
 export { AssuranceService } from "./assurance-service.js";
-export { canonicalizeJson, digestJson, isSha256, sha256Text } from "./canonical-json.js";
+export { canonicalizeJson, digestJson, isSha256, sha256Text } from "@emi-harness/canonical-json";
 export { AssuranceError, type AssuranceErrorCode } from "./errors.js";
 export { NodeCheckRunner, type NodeCheckRunnerConfig } from "./node-check-runner.js";
 export {

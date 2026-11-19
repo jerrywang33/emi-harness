@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@emi-harness/assurance": "workspace:*",
+    "@emi-harness/canonical-json": "workspace:*",
     "@emi-harness/control-plane": "workspace:*",
     "@emi-harness/resource-registry": "workspace:*",
     "@emi-harness/runtime-pi": "workspace:*",

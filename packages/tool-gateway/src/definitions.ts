@@ -1,4 +1,4 @@
-import { digestJson } from "./canonical-json.js";
+import { digestJson } from "@emi-harness/canonical-json";
 import type { JsonObject, ToolDefinitionV1, VersionedRef } from "./types.js";
 
 const workspaceWriteInputSchema: JsonObject = {

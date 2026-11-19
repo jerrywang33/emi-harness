@@ -1,4 +1,4 @@
-export { canonicalizeJson, digestJson, isSha256, sha256Text } from "./canonical-json.js";
+export { canonicalizeJson, digestJson, isSha256, sha256Text } from "@emi-harness/canonical-json";
 export { ControlPlaneRoleRunAuthority, type ControlPlaneAuthorityReader } from "./control-plane-authority.js";
 export {
   LOCAL_WORKSPACE_ISOLATION_REF,

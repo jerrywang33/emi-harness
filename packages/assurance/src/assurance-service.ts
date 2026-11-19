@@ -1,4 +1,5 @@
-import { canonicalizeJson, digestJson, isSha256 } from "./canonical-json.js";
+import { canonicalizeJson, digestJson, isSha256, refKey, sameRef } from "@emi-harness/canonical-json";
+
 import { fail } from "./errors.js";
 import { formatEvidenceRef } from "./sqlite-evidence-store.js";
 import type {
@@ -12,14 +13,6 @@ import type {
   VerificationAssuranceResult,
   VersionedRef,
 } from "./types.js";
-
-function refKey(ref: VersionedRef): string {
-  return `${ref.id}\u0000${ref.version}\u0000${ref.digest}`;
-}
-
-function sameRef(left: VersionedRef, right: VersionedRef): boolean {
-  return refKey(left) === refKey(right);
-}
 
 function assertExactChecks(required: readonly VersionedRef[], actual: readonly VersionedRef[]): void {
   if (required.length === 0) {

@@ -1,3 +1,5 @@
+import { sameRef } from "@emi-harness/canonical-json";
+
 import { fail } from "./errors.js";
 import type {
   Clock,
@@ -33,10 +35,6 @@ export interface ControlPlaneAuthorityReader {
       roles: readonly AuthorityRolePlan[];
     };
   };
-}
-
-function sameRef(left: VersionedRef, right: VersionedRef): boolean {
-  return left.id === right.id && left.version === right.version && left.digest === right.digest;
 }
 
 function sameTool(left: ToolPlanRef, right: ToolPlanRef): boolean {

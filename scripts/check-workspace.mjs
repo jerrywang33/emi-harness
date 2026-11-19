@@ -103,6 +103,11 @@ if (await exists(packagesPath)) {
 const runtimePiRoot = join(root, "packages/runtime-pi");
 const packageBaselineFiles = ["README.md", "package.json", "src/index.ts", "tsconfig.build.json", "tsconfig.json"];
 const requiredPackageFiles = {
+  "packages/canonical-json": [
+    "src/canonical-json.ts",
+    "src/versioned-ref.ts",
+    "test/canonical-json.test.ts",
+  ],
   "packages/runtime-pi": [
     "src/controlled-pi-session-factory.ts",
     "src/testing/deterministic-pi-runtime-adapter.ts",
