@@ -202,4 +202,48 @@ describe("RoleExecutionCoordinator", () => {
       await fixture.close();
     }
   });
+
+  it("settles ledger operations whose invoke() response was lost", async () => {
+    const unknownExecutor: IsolatedToolExecutorPort = {
+      async execute() {
+        throw new Error("worker connection lost after dispatch");
+      },
+      async reconcile() {
+        return {
+          outcome: "unknown",
+          output: { observed: "indeterminate" },
+          evidenceRefs: ["reconciliation-observation"],
+          errorCode: "target_state_indeterminate",
+          sanitizedError: "Target state cannot prove whether the write was applied",
+        };
+      },
+    };
+    const fixture = await createHarnessFixture({ executor: unknownExecutor, executorOutcome: "error" });
+    const invoke = fixture.gateway.invoke.bind(fixture.gateway);
+    fixture.gateway.invoke = async (...args) => {
+      await invoke(...args);
+      throw new Error("Gateway response was lost after the Operation was persisted");
+    };
+    try {
+      const execution = await fixture.coordinator.execute({
+        taskId: "task-1",
+        runId: "run-1",
+        roleRunId: "role-executor-1",
+        rolePlanId: "executor-plan",
+        cwd: fixture.root,
+        prompt: "Implement.",
+        worker: executorWorker,
+        executionResultId: "execution-result-1",
+      });
+      const operations = fixture.gateway.listOperationsForRoleRun("role-executor-1");
+      expect(operations.map((operation) => operation.status)).toEqual(["unknown"]);
+      expect(execution).toMatchObject({
+        status: "blocked",
+        errorCode: "unknown_tool_operation",
+        roleRun: { status: "blocked", toolOperationRefs: [operations[0]?.operationId] },
+      });
+    } finally {
+      await fixture.close();
+    }
+  });
 });

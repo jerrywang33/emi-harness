@@ -197,7 +197,10 @@ export class RoleExecutionCoordinator {
       tools,
     );
     const runtime = await this.runRuntime(started.session, request.prompt, rolePlan.limits.timeoutMs);
-    const operationIds = gatewayTools.operationIds();
+    const operationIds = [...new Set([
+      ...gatewayTools.operationIds(),
+      ...this.gateway.listOperationsForRoleRun(request.roleRunId).map((operation) => operation.operationId),
+    ])].sort();
     const settling = this.controlPlane.markRoleRunSettling({
       commandId: `${request.roleRunId}:runtime-settled`,
       actor: request.worker,

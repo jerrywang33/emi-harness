@@ -11,7 +11,7 @@
 - [types.ts](src/types.ts) 定义角色请求与结果；[role-execution-coordinator.ts](src/role-execution-coordinator.ts) 的构造配置接收其他 5 个包的实例及可信 Coordinator 身份。
 - `execute()` 要求已授权 Run，接收新 RoleRun ID、角色计划、Worker、工作目录、提示与输出制品 ID；完成一次执行、工具对账和 ExecutionResult 交接。返回 `failed` 或 `blocked` 时由宿主根据权威状态处理，配置和基础设施异常还可能抛出。
 - `verify()` 接收绑定的 ExecutionResult 和已完成 Executor RoleRun，创建独立 Session，运行外部检查后收集 Verifier 提交；结果中的 `completed` 表示角色交接完成，具体交付结论仍需读取 `verificationResult.content` 中的 `verdict` 和 Task 状态。
-- [submission-tools.ts](src/submission-tools.ts) 检查两类结构化提交并要求恰好一次；[gateway-runtime-tool.ts](src/gateway-runtime-tool.ts) 为写工具补上 Run、RoleRun 和 token，并收集返回的 Operation ID。
+- [submission-tools.ts](src/submission-tools.ts) 检查两类结构化提交并要求恰好一次；[gateway-runtime-tool.ts](src/gateway-runtime-tool.ts) 为写工具补上 Run、RoleRun 和 token，并收集返回的 Operation ID；Runtime 结束后 `execute()` 以 Gateway 账本中该 RoleRun 的全部 Operation 为准，覆盖 `invoke()` 已落账但未返回的调用。
 - [candidate-evidence-package.ts](src/candidate-evidence-package.ts) 从三个账本和调用方提供的资源快照构建候选包，检查后序列化并写入目标项目。外层 SHA-256 验证函数不重做完整生成时校验，也不提供签名认证。
 
 ## 当前组装方式
