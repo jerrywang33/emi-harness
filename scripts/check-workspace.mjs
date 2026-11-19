@@ -28,6 +28,7 @@ for (const path of [
   "docs/decisions/0001-rebuild-on-deepseek-harness.md",
   "docs/decisions/0002-adopt-pi-runtime-with-emi-control-plane.md",
   "docs/decisions/0003-use-sqlite-for-v0.1-control-plane.md",
+  "docs/decisions/0004-extract-canonical-json-and-sqlite-ledger.md",
   "docs/design/control-plane-persistence-and-recovery.md",
   "docs/design/control-plane-state-and-run-manifest.md",
   "docs/design/controlled-emi-resources-v0.1.md",

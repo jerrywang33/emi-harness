@@ -299,7 +299,9 @@ emi-harness/
 │   ├── resource-registry/ # EMI Context、Skills、Prompts、Schema 与 ResourceLoader
 │   ├── tool-gateway/      # 工具策略、意图、幂等、执行与结果
 │   ├── assurance/         # Verifiers、Evidence Schema 与交付检查
-│   └── integration/       # 受控角色编排、目标仓库与外部系统适配
+│   ├── integration/       # 受控角色编排、目标仓库与外部系统适配
+│   ├── canonical-json/    # 规范 JSON、SHA-256 摘要与版本引用（技术基础能力）
+│   └── sqlite-ledger/     # 账本型 SQLite 连接、迁移与事务（技术基础能力）
 ├── scripts/              # 受控启动、版本锁定、配置检查与发布脚本
 ├── tests/                # 跨包契约、失败恢复与端到端测试
 ├── roadmap/              # 阶段目标和实施进度
@@ -311,7 +313,7 @@ emi-harness/
 
 上图是逐步建设的目标结构。只有开始实现一项真实能力时才创建相应目录；每个包必须有明确的职责、入口、输出、依赖方向和契约测试，不用空包或占位文件制造已经完成的假象。
 
-当前 6 个包均已有实现；测试位于各包的 `test/`，跨包组合与 Pi 端到端测试位于 `packages/integration/test/`，尚未建立根级 `tests/`。实际包关系和代码入口见 [Review 指南](docs/review-guide.md#2-推荐阅读顺序)。
+当前 8 个包均已有实现，其中 `canonical-json` 与 `sqlite-ledger` 是按 [ADR 0004](docs/decisions/0004-extract-canonical-json-and-sqlite-ledger.md) 提取的技术基础包，不承载业务概念；测试位于各包的 `test/`，跨包组合与 Pi 端到端测试位于 `packages/integration/test/`，尚未建立根级 `tests/`。实际包关系和代码入口见 [Review 指南](docs/review-guide.md#2-推荐阅读顺序)。
 
 ### 状态、证据与仓库边界
 

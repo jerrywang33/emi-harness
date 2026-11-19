@@ -27,6 +27,17 @@ v0.1 的设计是供真实项目验证的受控基线，不以一次性覆盖所
 
 v0.1 第 1 至第 8 步工程建设已经完成。当前在独立 review 后逐项讨论修复，再选取一个真实、低风险且边界清楚的 EMI 研发任务，由用户和相应责任人确认 PRD、司法辖区、适用 Context 与验收标准后进行校准；Harness 不代替用户作出业务、法律或最终验收结论。
 
+### 进行中：提取规范 JSON 与 SQLite 账本基础包 - 2026-11-19
+
+- 按 [ADR 0004](../docs/decisions/0004-extract-canonical-json-and-sqlite-ledger.md) 新增 `@emi-harness/canonical-json` 与 `@emi-harness/sqlite-ledger`，替换 Control Plane、Tool Gateway、Evidence Store 和 Resource Registry 中各自复制的规范 JSON、摘要、SQLite 连接、迁移、事务和行读取实现。
+- 不改变规范 JSON 字节、摘要、迁移 ID 与 SQL、数据库 Schema 或各包公开导出；已有 SQLite 文件、固定工具摘要和 v0.1 历史证据保持有效。
+- 本项不调整 Control Plane 分层、跨包端口或业务行为；这些设计缺口另行讨论。
+
+### 已确认修复：Executor 结算覆盖 Gateway 账本中的全部 Operation - 2026-11-19
+
+- Coordinator 原先只从 `invoke()` 成功返回的结果收集 Operation ID。`invoke()` 在 Operation 落账后失败时，该 Operation 不会被对账，RoleRun 会以可重试的普通失败结算，而不是因未知副作用阻塞。
+- Runtime 结束后改为合并已收集 ID 与 Gateway 账本中该 RoleRun 的全部 Operation，与候选 Evidence Package 的覆盖校验使用同一权威来源；新增 `invoke()` 响应丢失的回归测试。
+
 ### 已确认修复：派发前同步重检授权 - 2026-09-08
 
 - 修复 Gateway 初始异步授权完成后，批准已撤销仍可派发的间隙。`RoleRunAuthorityPort` 新增必需的同步 `authorizeForDispatch()`，初始 `authorize()` 快照只用于初始策略决定。

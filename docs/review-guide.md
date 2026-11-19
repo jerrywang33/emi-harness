@@ -4,7 +4,7 @@
 
 ## 1. 先确定审查范围
 
-EMI Harness 用 Pi 执行 Agent 工作，自有代码管理任务状态、授权、工具操作、检查和证据。当前交付形态是 6 个 TypeScript 库和一个本地校准命令，尚无完整业务 CLI、HTTP 服务、审批界面或常驻任务调度服务。
+EMI Harness 用 Pi 执行 Agent 工作，自有代码管理任务状态、授权、工具操作、检查和证据。当前交付形态是 8 个 TypeScript 库（6 个职责包和 2 个技术基础包）和一个本地校准命令，尚无完整业务 CLI、HTTP 服务、审批界面或常驻任务调度服务。
 
 - [根 README](../README.md) 说明目标架构；[Roadmap](../roadmap/README.md) 记录各步实现；[v0.1 发布记录](releases/v0.1.0.md) 固定历史验收范围和限制。
 - 本次重点检查控制面与 Runtime 的分工、权限与数据边界、失败恢复、验证与交付证据，以及测试能否支撑相应结论。
@@ -15,7 +15,7 @@ EMI Harness 用 Pi 执行 Agent 工作，自有代码管理任务状态、授权
 ## 2. 推荐阅读顺序
 
 1. 阅读 [AGENTS](../AGENTS.md)、根 README 的“EMI Harness 是什么”和“当前阶段”，确认目标与实现范围。
-2. 阅读已接受的 [ADR 0002：Pi Runtime 边界](decisions/0002-adopt-pi-runtime-with-emi-control-plane.md) 和 [ADR 0003：SQLite 持久化](decisions/0003-use-sqlite-for-v0.1-control-plane.md)。ADR 0001 已被替代，只作历史记录。
+2. 阅读已接受的 [ADR 0002：Pi Runtime 边界](decisions/0002-adopt-pi-runtime-with-emi-control-plane.md) 、[ADR 0003：SQLite 持久化](decisions/0003-use-sqlite-for-v0.1-control-plane.md) 和 [ADR 0004：基础技术包](decisions/0004-extract-canonical-json-and-sqlite-ledger.md)。ADR 0001 已被替代，只作历史记录。
 3. 阅读 [真实 Pi 目标项目 E2E](../packages/integration/test/pi-target.e2e.test.ts) 及其 [组装 fixture](../packages/integration/test/fixtures.ts)，看实际由谁创建输入、批准运行、调用各包和检查输出。Fixture 中的身份、审批和模型回答是测试数据。
 4. 从 [RoleExecutionCoordinator](../packages/integration/src/role-execution-coordinator.ts) 的 `execute()`、`verify()` 顺着调用进入各包，再检查对应测试与异常分支。
 5. 按本文件的验证命令复现，逐项记录设计要求、实现行为、测试覆盖和待确认条件。不要仅依据 README 或注释认定某项保障已成立。
@@ -33,7 +33,7 @@ EMI Harness 用 Pi 执行 Agent 工作，自有代码管理任务状态、授权
 | [assurance](../packages/assurance/README.md) | `AssuranceService`；必需检查定义、执行对象、Verifier 提交 | Check Evidence 与经过门禁检查的 Verification 内容；供 Integration 使用 |
 | [integration](../packages/integration/README.md) | `RoleExecutionCoordinator` 与 `CandidateEvidencePackageBuilder`；已授权 Run、角色请求或导出请求 | 角色交接结果、状态变化、候选 Evidence Package；当前使用方为测试和本地校准 |
 
-`integration` 依赖其余 5 个包。只有 `runtime-pi` 直接依赖 Pi；`tool-gateway` 通过 `ControlPlaneAuthorityReader` 的结构化接口读取控制面。当前多个构造参数仍使用具体实现类型，替换存储或执行方式需要逐个检查这些依赖。
+`integration` 依赖其余 5 个职责包和 `canonical-json`；三个账本包通过 `sqlite-ledger` 打开数据库、应用迁移和执行事务，规范 JSON 与摘要只在 `canonical-json` 实现一次。只有 `runtime-pi` 直接依赖 Pi；`tool-gateway` 通过 `ControlPlaneAuthorityReader` 的结构化接口读取控制面。当前多个构造参数仍使用具体实现类型，替换存储或执行方式需要逐个检查这些依赖。
 
 ## 3. 实际调用链
 
